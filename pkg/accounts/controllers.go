@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"payme/pkg/config"
+	"payme/pkg/middleware"
+	"payme/pkg/wallet"
 
 	"github.com/google/uuid"
 )
@@ -77,8 +80,52 @@ func CreateVirtualAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	respbody, _ := io.ReadAll(resp.Body)
+	respbody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
+		return
+	}
 	fmt.Println("FlutterWave response:", string(respbody))
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(respbody, &result); err != nil {
+		http.Error(w, "Failed to parse API response", http.StatusInternalServerError)
+		return
+	}
+
+
+
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		http.Error(w, "Invalid data structure in API response", http.StatusInternalServerError)
+		return
+	}
+
+	var wallet wallet.Wallet
+	userID, _ := middleware.GetUserID(r)
+	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
+		http.Error(w, "wallet not found", http.StatusBadRequest)
+		return
+	}
+
+	virtualAcc := VirtualAccount{
+		WalletID:      uint(wallet.ID),
+		AccountNumber: data["account_number"].(string),
+		AccountName:   input.Firstname + " " + input.Lastname,
+		BankName:      data["bank_name"].(string),
+		Provider:      "flutterwave",
+		Status:        data["account_status"].(string),
+	}
+
+	// Fallback if AccountName is missing from API
+	if virtualAcc.AccountName == "" {
+		virtualAcc.AccountName = fmt.Sprintf("%s %s", input.Firstname, input.Lastname)
+	}
+
+	if err := config.DB.Create(&virtualAcc).Error; err != nil {
+		http.Error(w, "Failed to create virtual account in database", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(respbody)

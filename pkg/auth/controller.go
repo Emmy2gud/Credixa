@@ -7,6 +7,7 @@ import (
 	"payme/pkg/user"
 	"payme/pkg/utils"
 	"payme/pkg/wallet"
+
 )
 
 func Register(w http.ResponseWriter, r *http.Request) {

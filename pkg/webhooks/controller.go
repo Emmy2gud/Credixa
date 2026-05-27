@@ -44,8 +44,8 @@ func FlutterwaveWebhook(w http.ResponseWriter, r *http.Request) {
 	case "CARD_TRANSACTION":
 		services.HandleFunding(payload, w, r, source)
 	case "bank_transfer":
-		// services.HandleTransfer(payload, w, r,source)
-		fmt.Println("bank transfer")
+	services.HandleTransfer(payload, w, r,source)
+		
 	case "ussd":
 		// services.HandleBillapay(payload, w, r,source)
 		fmt.Println("ussd")

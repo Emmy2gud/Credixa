@@ -12,4 +12,5 @@ type Transfer struct {
 	Reference string `json:"reference"`
 	Status string `json:"status"`//pending,completed,failed
 	
+	
 }

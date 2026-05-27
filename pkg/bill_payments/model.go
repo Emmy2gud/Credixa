@@ -7,6 +7,7 @@ type BillPayment struct {
 	gorm.Model	
 	ID        string    `json:"id"`
 	UserID    uint    `json:"user_id"`
+	TransactionID uint `json:"transaction_id"`
 	WalletID  uint    `json:"wallet_id"`
 	BillType  string    `json:"bill_type"` // airtime, data, electricity, cable
 	Provider  string    `json:"provider"`  // mtn, glo, dstv, etc.
