@@ -96,8 +96,13 @@ func BillCategory(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Flutterwave response:", string(body))
 
+	//category service
+	respData := BillServiceCategory(body, categoryId)
+
+
+	// Convert updated data back to JSON
+	body, _ = json.Marshal(respData)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(body)
 }
