@@ -3,24 +3,25 @@ package main
 import (
 	"log"
 	"net/http"
-	"payme/pkg/accounts"
-	"payme/pkg/bill_payments"
-	"payme/pkg/config"
-	"payme/pkg/notifications"
-	"payme/pkg/pendingcard"
-	"payme/pkg/routes"
-	"payme/pkg/savings"
-	"payme/pkg/splits"
-	"payme/pkg/token"
-	"payme/pkg/transaction"
-	"payme/pkg/transactionpin"
-	"payme/pkg/transfer"
-	"payme/pkg/user"
-	"payme/pkg/wallet"
+	"payme/internal/api/routes"
+	"payme/internal/application/accounts"
+	"payme/internal/application/bill_payments"
+	"payme/internal/config"
+
+	"payme/internal/application/notifications"
+	"payme/internal/application/pendingcard"
+
+	"payme/internal/application/savings"
+	"payme/internal/application/splits"
+	"payme/internal/application/token"
+	"payme/internal/application/transaction"
+	"payme/internal/application/transactionpin"
+	"payme/internal/application/transfer"
+	"payme/internal/application/user"
+	"payme/internal/application/wallet"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
-	
 )
 
 func main() {
