@@ -8,7 +8,6 @@ import (
 	"payme/internal/api/middleware"
 	"payme/pkg/utils"
 
-
 	"github.com/gorilla/mux"
 )
 
@@ -35,15 +34,31 @@ type ChargeWithTokenRequest struct {
 	TxRef  string `json:"tx_ref"`
 }
 
-func GetWalletBalance(w http.ResponseWriter, r *http.Request) {
+type WalletController struct {
+	service WalletService
+}
+
+func NewWalletController(service WalletService) *WalletController {
+	return &WalletController{
+		service: service,
+	}
+}
+
+func (h *WalletController) GetWalletBalance(w http.ResponseWriter, r *http.Request) {
 	// GetBalance logic here
 }
 
-func InitiateWalletFunding(w http.ResponseWriter, r *http.Request) {
+func (h *WalletController) InitiateWalletFunding(w http.ResponseWriter, r *http.Request) {
 	var userCard ChargeRequest
 	utils.ParseBody(r, &userCard)
-	//importing service function
-	txref, result, err := InitiateCardWalletFunding(userCard, r)
+
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	txref, result, err := h.service.InitiateCardWalletFunding(r.Context(), userCard, userID)
 	response := map[string]interface{}{
 		"tx_ref":      txref,
 		"flutterwave": result,
@@ -54,14 +69,17 @@ func InitiateWalletFunding(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println(result)
 	body, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(body)
-
 }
 
-func AuthorizeCardFunding(w http.ResponseWriter, r *http.Request) {
+func (h *WalletController) AuthorizeCardFunding(w http.ResponseWriter, r *http.Request) {
 	// The user only needs to send their PIN and the tx_ref from step 1.
 	// The full card payload is retrieved automatically from the database.
 	var req struct {
@@ -75,7 +93,7 @@ func AuthorizeCardFunding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := AuthorizeCardFundingService(req.TxRef, req.Pin)
+	result, err := h.service.AuthorizeCardFundingService(r.Context(), req.TxRef, req.Pin)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -85,7 +103,8 @@ func AuthorizeCardFunding(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(result)
 }
-func ValidateWalletFunding(w http.ResponseWriter, r *http.Request) {
+
+func (h *WalletController) ValidateWalletFunding(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		FlwRef string `json:"flw_ref"`
 		Otp    string `json:"otp"`
@@ -98,7 +117,7 @@ func ValidateWalletFunding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := ValidateCardCharge(req.FlwRef, req.Otp)
+	result, err := h.service.ValidateCardCharge(r.Context(), req.FlwRef, req.Otp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -112,7 +131,7 @@ func ValidateWalletFunding(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func VerifyCardCharge(w http.ResponseWriter, r *http.Request) {
+func (h *WalletController) VerifyCardCharge(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -127,7 +146,7 @@ func VerifyCardCharge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := VerifyCard(id, userID)
+	result, err := h.service.VerifyCard(r.Context(), id, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -138,45 +157,3 @@ func VerifyCardCharge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(body)
 }
-
-
-
-// func ChargeWithToken(w http.ResponseWriter, r *http.Request) {
-//     var tokendata ChargeWithTokenRequest
-// 	   utils.ParseBody(r, &tokendata)
-
-// 	payload := map[string]interface{}{
-// 		"token":    tokendata.Token,
-// 		"currency": "NGN",
-// 		"amount":   tokendata.Amount,
-// 		"email":    tokendata.Email,
-
-// 	}
-// 	body, _ := json.Marshal(payload)
-
-// 	req, _ := http.NewRequest("POST", "https://api.flutterwave.com/v3/tokenized-charges", bytes.NewBuffer(body))
-// 	req.Header.Set("Authorization", "Bearer "+os.Getenv("FLW_SECRET_KEY"))
-// 	req.Header.Set("Content-Type", "application/json")
-
-// 	client := &http.Client{}
-// 	resp, err := client.Do(req)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer resp.Body.Close()
-
-// 	var result map[string]interface{}
-// 	respBody, _ := io.ReadAll(resp.Body)
-// 	json.Unmarshal(respBody, &result)
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusCreated)
-// 	json.NewEncoder(w).Encode(map[string]interface{}{
-// 		"message": "Payment successful",
-// 		"data":   result,
-// 	})
-
-// }
-
-

@@ -1,17 +1,17 @@
 package dto
 
 	type CreateVirtualAccountInput struct {
-		Email        string `json:"email"`
-		Phone        string `json:"phonenumber"`
-		Amount       int32  `json:"amount"`
-		Firstname    string `json:"firstname"`
-		Lastname     string `json:"lastname"`
-		Bvn          string  `json:"bvn"`
-		// TxRef        string `json:"tx_ref"`
-		// Currency     string `json:"currency"`
-		// Is_permanent bool   `json:"is_permanent"`
-		// Narration    string `json:"narration"`
-		// BankCode     string `json:"bank_code"`
+    Email        string `json:"email"`
+    Phone        string `json:"phonenumber"`
+    Amount       int32  `json:"amount"`
+    Currency     string `json:"currency"`
+    Firstname    string `json:"firstname"`
+    Lastname     string `json:"lastname"`
+    Is_permanent bool   `json:"is_permanent"`
+    TxRef        string `json:"tx_ref"`
+    Narration    string `json:"narration"`
+    BankCode     string `json:"bank_code"`
+    Bvn          string `json:"bvn"`
 	}
 
 

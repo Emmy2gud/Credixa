@@ -1,6 +1,8 @@
 package middleware
+
 import (
 	"context"
+	"fmt"
 
 	"net/http"
 	"strings"
@@ -37,6 +39,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		//claims["user_id"] → the value
 		claims := token.Claims.(jwt.MapClaims)
 		ctx := context.WithValue(r.Context(), "user_id", claims["user_id"])
+		fmt.Println(ctx)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -4,24 +4,29 @@ import (
 	"encoding/json"
 	"net/http"
 	"payme/internal/api/middleware"
-	"payme/internal/config"
-	
 )
+
+type NotificationController struct {
+	service NotificationService
+}
+
+func NewNotificationController(service NotificationService) *NotificationController {
+	return &NotificationController{
+		service: service,
+	}
+}
 
 // GetNotifications returns all notifications for the authenticated user,
 // ordered from newest to oldest.
-func GetNotifications(w http.ResponseWriter, r *http.Request) {
+func (h *NotificationController) GetNotifications(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	var notifs []Notification
-	if err := config.GetDB().
-		Where("user_id = ?", userID).
-		Order("id DESC").
-		Find(&notifs).Error; err != nil {
+	notifs, err := h.service.GetNotifications(r.Context(), userID)
+	if err != nil {
 		http.Error(w, "Could not fetch notifications", http.StatusInternalServerError)
 		return
 	}
@@ -31,7 +36,7 @@ func GetNotifications(w http.ResponseWriter, r *http.Request) {
 }
 
 // MarkNotificationRead marks a single notification as read for the authenticated user.
-func MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
+func (h *NotificationController) MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -46,16 +51,12 @@ func MarkNotificationRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := config.GetDB().
-		Model(&Notification{}).
-		Where("id = ? AND user_id = ?", body.NotificationID, userID).
-		Update("is_read", true)
-
-	if result.Error != nil {
+	rowsAffected, err := h.service.MarkNotificationRead(r.Context(), body.NotificationID, userID)
+	if err != nil {
 		http.Error(w, "Could not update notification", http.StatusInternalServerError)
 		return
 	}
-	if result.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		http.Error(w, "Notification not found", http.StatusNotFound)
 		return
 	}

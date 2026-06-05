@@ -11,7 +11,7 @@ type BillPayment struct {
 	WalletID  uint    `json:"wallet_id"`
 	BillType  string    `json:"bill_type"` // airtime, data, electricity, cable
 	Provider  string    `json:"provider"`  // mtn, glo, dstv, etc.
-	Amount    float64   `json:"amount"`
+	Amount    uint64   `json:"amount"`
 	Token string `json:"token"`
 	Reference string    `json:"reference"`
 	Status    string    `json:"status"`   // pending, successful, failed

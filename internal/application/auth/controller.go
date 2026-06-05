@@ -2,107 +2,55 @@ package auth
 
 import (
 	"encoding/json"
-	"net/http"
-	"payme/internal/application/wallet"
-	"payme/internal/config"
-	"payme/internal/application/user"
-	"payme/pkg/utils"
-	
 
+	"net/http"
+	"strings"
+
+	"payme/internal/application/auth/dto"
+
+	"payme/pkg/utils"
+
+	
 )
 
-func Register(w http.ResponseWriter, r *http.Request) {
-	var u user.User
+type AuthHandler struct {
+	service AuthService
+}
+
+func NewAuthHandler(service AuthService) *AuthHandler {
+	return &AuthHandler{service: service}
+}
+
+func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+
+	var u dto.SignUpRequest
 	utils.ParseBody(r, &u)
 
-	// Check if user already exists
-	var existingUser user.User
-	if err := config.DB.Where("email = ?", u.Email).First(&existingUser).Error; err == nil {
-		http.Error(w, "Email already exists", http.StatusBadRequest)
-		return
-	}
-
-	if err := utils.ValidateRegister(u.FullName, u.Email, u.Password); err != nil {
+	resp, err := h.service.SignUp(r.Context(), u)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	hashedPassword, err := utils.HashPassword(u.Password)
-	if err != nil {
-		http.Error(w, "Error hashing password", http.StatusInternalServerError)
-		return
-	}
-	u.Password = hashedPassword
-	u.Role = "users"
-
-	if err := config.DB.Create(&u).Error; err != nil {
-		http.Error(w, "Could not create user", http.StatusInternalServerError)
-		return
-	}
-
-	wlt := wallet.Wallet{
-		UserID:   u.ID,
-		Balance:  0,
-		Currency: "NGN",
-		Status:   "active",
-	}
-
-	if err := config.DB.Create(&wlt).Error; err != nil {
-		http.Error(w, "Could not create wallet", http.StatusInternalServerError)
-		return
-	}
-
-	// ✅ Generate JWT token
-	token, err := utils.GenerateToken(u.ID, u.Role)
-	if err != nil {
-		http.Error(w, "Could not generate token", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message":      "User registered successfully",
-		"access_token": token,
-	})
+	json.NewEncoder(w).Encode(resp)
 
 }
 
-func Login(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
+func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var input dto.LoginRequest
 	utils.ParseBody(r, &input)
-	var user user.User
-
-	if err := config.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
-		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-		return
-	}
-
-	err := utils.CheckPassword(user.Password, input.Password)
+	resp, err := h.service.Login(r.Context(), input)
 	if err != nil {
-		http.Error(w, "Error hashing password ", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	// ✅ Generate JWT token
-	token, err := utils.GenerateToken(user.ID, user.Role)
-	if err != nil {
-		http.Error(w, "Could not generate token", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message":      "User Logged successfully",
-		"access_token": token,
-	})
+	utils.JSON(w,http.StatusOK,resp)
 }
 
 func Logout(w http.ResponseWriter, r *http.Request) {
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -110,12 +58,44 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		"message": "Logged out successfully. Please clear your auth token.",
 	})
 }
-func ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	// ForgotPassword logic here
+
+func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var fp dto.ForgotPasswordRequest
+	utils.ParseBody(r, &fp)
+    resp,err := h.service.ForgotPassword(r.Context(),fp)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+	utils.JSON(w,http.StatusCreated,resp)
 }
 
-func ResetPassword(w http.ResponseWriter, r *http.Request) {
-	// ResetPassword logic here
+func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+    var req dto.ResetPasswordRequest
+
+	utils.ParseBody(r, &req)
+	// 1️⃣ Get token from Authorization header
+
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+		
+
+	tokenString := strings.Replace(auth, "Bearer ", "", 1)
+
+
+	resp,err:=h.service.ResetPassword(r.Context(),req,tokenString)
+	if err != nil {
+        http.Error(w, err.Error(), http.StatusBadRequest)
+        return
+    }
+
+
+
+
+	utils.JSON(w,http.StatusOK,resp)
 }
 
 func VerifyEmail(w http.ResponseWriter, r *http.Request) {

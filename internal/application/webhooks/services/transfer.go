@@ -62,7 +62,7 @@ func HandleTransfer( payload map[string]interface{}, w http.ResponseWriter, r *h
 	}
 
 	// 5. Credit wallet (IDEMPOTENT)
-	fmt.Printf("Crediting wallet for user %d with amount %f\n", session.UserID, session.Amount)
+	fmt.Printf("Crediting wallet for user %d with amount %d\n", session.UserID, session.Amount)
 	if err := wallet.UpdateWalletBalance(uint(session.UserID), session.Amount); err != nil {
 		fmt.Printf("Webhook Error: Failed to update wallet balance: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)

@@ -3,52 +3,46 @@ package transactionpin
 import (
 	"encoding/json"
 	"net/http"
-	"payme/internal/config"
 	"payme/internal/api/middleware"
+	"payme/internal/application/transactionpin/dto"
 	"payme/pkg/utils"
-	
-	
 )
+type transactionPinController struct {
+	service TransactionPinService
+}
 
-func CreateTransactionPin(w http.ResponseWriter, r *http.Request) {
-	var tp TransactionPin
+func NewTransactionPinController(service TransactionPinService) *transactionPinController {
+	return &transactionPinController{
+		service: service,
+	}
+}
+
+func(h *transactionPinController) CreateTransactionPin(w http.ResponseWriter, r *http.Request) {
+	var tp dto.SetTransactionPinRequest
 	utils.ParseBody(r, &tp)
-	// 1️⃣ Get user ID from context
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
-		http.Error(w, "User not found", http.StatusUnauthorized)
+		http.Error(w, "user not found", http.StatusUnauthorized)
 		return
 	}
-	//pin length is 4 
-	if len(tp.Pin) != 4 {
-		http.Error(w, "Pin must be 4 digits", http.StatusBadRequest)
+   resp,err :=h.service.SetTransactionPin(r.Context(),tp,userID)
+   if err != nil {
+	   	http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
-	}
-	pin, err := utils.HashPassword(tp.Pin)
-	if err != nil {
-		http.Error(w, "Error hashing password", http.StatusInternalServerError)
-		return
-	}
+   }
 
-	tp.UserID = userID
-
-	tp.Pin = pin
-
-	config.DB.Create(&tp)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Transaction pin created successfully",
-	})
+	json.NewEncoder(w).Encode(resp)
 
 }
 
-func VerifyTransactionPin(w http.ResponseWriter, r *http.Request) {
+func (h *transactionPinController) VerifyTransactionPin(w http.ResponseWriter, r *http.Request) {
 	// VerifyTransactionPin logic here
 }
 
-func UpdateTransactionPin(w http.ResponseWriter, r *http.Request) {
+func (h *transactionPinController) UpdateTransactionPin(w http.ResponseWriter, r *http.Request) {
 	// UpdateTransactionPin logic here
 }
 

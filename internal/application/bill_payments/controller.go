@@ -5,130 +5,153 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"payme/internal/api/middleware"
+	"payme/internal/application/bill_payments/dto"
+	"payme/internal/application/bill_payments/sub-services"
+
+	"payme/pkg/utils"
 
 	"github.com/gorilla/mux"
 )
 
-// BillPaymentController handles HTTP requests for bill payments
-type BillPaymentPayload struct {
-	Phone         string `json:"phone"`
-	Amount        string `json:"amount"`
-	ServiceId     string `json:"serviceID"`
-	RequestId     string `json:"request_id"`
-	BillerCode    string `json:"billersCode"`
-	VariationCode string `json:"variation_code"`
+type BillPaymentController struct {
+	service BillPaymentService
 }
 
-func BillerCategories(w http.ResponseWriter, r *http.Request) {
-	// userID, _ := middleware.GetUserID(r)
-	req, err := http.NewRequest("GET", "https://vtpass.com/api/service-categories", nil)
+func NewBillPaymentController(service BillPaymentService) *BillPaymentController {
+	return &BillPaymentController{service: service}
+}
+
+func (h *BillPaymentController) BillerCategories(w http.ResponseWriter, r *http.Request) {
+	body, err := h.service.GetBillerCategories(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("api-key", os.Getenv("VTPASS_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Flutterwave response:", string(body))
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
+	utils.JSON(w, http.StatusOK, body)
 }
 
-func BillerCategory(w http.ResponseWriter, r *http.Request) {
-	// Implementation will go here
+func (h *BillPaymentController) BillerCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	categoryId := vars["category"]
+	categoryID := vars["category"]
 
-	req, err := http.NewRequest("GET", "https://vtpass.com/api/services?identifier="+categoryId, nil)
+	body, err := h.service.GetBillerCategory(r.Context(), categoryID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("api-key", os.Getenv("VTPASS_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Println("Flutterwave response:", string(body))
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
+	utils.JSON(w, http.StatusOK, body)
 }
 
-func BillCategory(w http.ResponseWriter, r *http.Request) {
-	// Implementation will go here
+func (h *BillPaymentController) BillCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	categoryId := vars["category"]
+	categoryID := vars["category"]
 
-	req, err := http.NewRequest("GET", "https://vtpass.com/api/service-variations?serviceID="+categoryId, nil)
+	body, err := h.service.GetBillCategory(r.Context(), categoryID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("api-key", os.Getenv("VTPASS_API_KEY"))
-	req.Header.Set("Content-Type", "application/json")
+	// categorybody, _ := io.ReadAll(body)
+    // respbody, err := h.service.BillServiceCategory(body, categoryID)
+	utils.JSON(w, http.StatusOK, body)
+}
+// func (h *BillPaymentController)BillCategory(w http.ResponseWriter, r *http.Request) {
+// 	// Implementation will go here
+// 	vars := mux.Vars(r)
+// 	categoryID := vars["category"]
+// 	body:=utils.ParseBody(r)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+// 	body, err := h.service.BillServiceCategory(body, categoryID)
+// 	if err != nil {
+// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	utils.JSON(w, http.StatusOK, body)
+// }
+
+
+func (h *BillPaymentController) VerifySubscription(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	serviceID := vars["serviceid"]
+
+	var ElecInput dto.VerifyElectricityRequest
+	var TvInput dto.VerifyTvSubscriptionRequest
+	switch {
+	case sub_services.IsElectricityService(serviceID):
+		utils.ParseBody(r, &ElecInput)
+	case sub_services.IsTvService(serviceID):
+		utils.ParseBody(r, &TvInput)
+	}
+
+	respbody, err := h.service.VerifySubscription(r.Context(), serviceID, ElecInput, TvInput)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	//category service
-	respData := BillServiceCategory(body, categoryId)
-
-
-	// Convert updated data back to JSON
-	body, _ = json.Marshal(respData)
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(body)
+	fmt.Println(respbody)
+	utils.JSON(w, http.StatusOK, respbody)
 }
 
-func CreateBillPayment(w http.ResponseWriter, r *http.Request) {
+func (h *BillPaymentController) CreateBillPayment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	serviceid := vars["serviceid"]
-	variationcode := vars["variationcode"]
-	userID, _ := middleware.GetUserID(r)
+	serviceID := vars["serviceid"]
+	variationCode := vars["variationcode"]
 
-	var input struct {
-		Amount string `json:"amount"`
-		Phone  string `json:"phone"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	respbody, err := ProcessBillPayment(userID, serviceid, variationcode, input.Phone, input.Amount)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	var (
+		airtimeInput dto.CreateBillPaymentAirtimeRequest
+		dataInput    dto.CreateBillPaymentDataRequest
+		tvInput      dto.ChangeTvRequest
+		electricInput dto.ElectricityRequest
+	)
+
+	// Decode directly into the right DTO based on serviceID
+	switch {
+	case sub_services.IsElectricityService(serviceID):
+		if err := json.Unmarshal(body, &electricInput); err != nil {
+			http.Error(w, "invalid electricity request body", http.StatusBadRequest)
+			return
+		}
+	case sub_services.IsTvService(serviceID):
+		if err := json.Unmarshal(body, &tvInput); err != nil {
+			http.Error(w, "invalid TV request body", http.StatusBadRequest)
+			return
+		}
+	case sub_services.IsMobileData(serviceID):
+		if err := json.Unmarshal(body, &dataInput); err != nil {
+			http.Error(w, "invalid data request body", http.StatusBadRequest)
+			return
+		}
+	case sub_services.IsMobileVtu(serviceID):
+		if err := json.Unmarshal(body, &airtimeInput); err != nil {
+			http.Error(w, "invalid airtime request body", http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "unsupported service type: "+serviceID, http.StatusBadRequest)
+		return
+	}
+resp, err := h.service.CreateBillPayment(r.Context(), userID, serviceID, variationCode,airtimeInput, dataInput, tvInput, electricInput)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(respbody)
+	utils.JSON(w, http.StatusOK, resp)
 }

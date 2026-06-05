@@ -4,14 +4,24 @@ import (
 	"net/http"
 )
 
-func GetTransactionHistory(w http.ResponseWriter, r *http.Request) {
-
+type TransactionController struct {
+	service TransactionService
 }
 
-func GetTransactionByID(w http.ResponseWriter, r *http.Request) {
+func NewTransactionController(service TransactionService) *TransactionController {
+	return &TransactionController{
+		service: service,
+	}
+}
+
+func (h *TransactionController) GetTransactionHistory(w http.ResponseWriter, r *http.Request) {
+	// GetTransactionHistory logic here
+}
+
+func (h *TransactionController) GetTransactionByID(w http.ResponseWriter, r *http.Request) {
 	// GetTransactionByID logic here
 }
 
-func GetWalletLogs(w http.ResponseWriter, r *http.Request) {
+func (h *TransactionController) GetWalletLogs(w http.ResponseWriter, r *http.Request) {
 	// GetWalletLogs logic here
 }
