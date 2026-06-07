@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+
+	adapters "payme/internal/adapters/flutterwave"
 	"payme/internal/application/accounts/dto"
 	"payme/internal/application/wallet"
-	"payme/pkg/httpx"
+
 
 	"github.com/google/uuid"
 
@@ -20,6 +21,7 @@ type VirtualAccountService interface {
 
 type virtualAccountService struct {
 	db *gorm.DB
+	
 }
 
 func NewVirtualAccountService(db *gorm.DB) VirtualAccountService {
@@ -37,24 +39,15 @@ func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context, input 
 	input.Is_permanent = true
 	input.TxRef = "token_ch_" + uuid.New().String()
 
-
-	flwClient := httpx.New(
-		"https://api.flutterwave.com",
-		map[string]string{
-			"Authorization": "Bearer " + os.Getenv("FLW_SECRET_KEY"),
-			"Content-Type":  "application/json",
-		},
-	)
-
-	respbody, err := flwClient.DoRequest(ctx, "POST", "/v3/virtual-account-numbers", &input, nil)
+   	flwResp, err := adapters.NewClient().CreateVirtualAccount(ctx,input)
 	if err != nil {
 		return dto.VirtualAccountResponse{}, fmt.Errorf("flutterwave request failed: %v", err)
 	}
 
-	fmt.Println("FlutterWave response:", string(respbody))
+	fmt.Println("FlutterWave response:", string(flwResp))
 
 	var result map[string]interface{}
-	if err := json.Unmarshal(respbody, &result); err != nil {
+	if err := json.Unmarshal(flwResp, &result); err != nil {
 		return dto.VirtualAccountResponse{}, fmt.Errorf("failed to parse API response: %v", err)
 	}
 

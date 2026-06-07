@@ -11,24 +11,6 @@ import (
 	"time"
 )
 
-// req, err := http.NewRequestWithContext(ctx, "POST", "https://api.flutterwave.com/v3/virtual-account-numbers", bytes.NewBuffer(flwPayload))
-// if err != nil {
-// 	return nil, err
-// }
-// req.Header.Set("Authorization", "Bearer "+os.Getenv("FLW_SECRET_KEY"))
-// req.Header.Set("Content-Type", "application/json")
-
-// client := &http.Client{}
-// resp, err := client.Do(req)
-// if err != nil {
-// 	return nil, err
-// }
-// defer resp.Body.Close()
-
-// respbody, err := io.ReadAll(resp.Body)
-// if err != nil {
-// 	return nil, fmt.Errorf("failed to read response body: %v", err)
-// }
 
 type Client struct {
 	baseURL    string
