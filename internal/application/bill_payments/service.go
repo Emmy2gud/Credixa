@@ -210,7 +210,13 @@ func (s *billPaymentService) VerifySubscription(ctx context.Context, serviceID s
 }
 func (s *billPaymentService) CreateBillPayment(ctx context.Context, userID uint, serviceID, variationCode string, airtimeInput dto.CreateBillPaymentAirtimeRequest, dataInput dto.CreateBillPaymentDataRequest, tvInput dto.ChangeTvRequest, electricInput dto.ElectricityRequest) (*dto.BillPaymentResponse, error) {
 
-	// 1. Get wallet
+	// 1. Get wallet and idempotency
+	var t transaction.Transaction	
+
+
+   if err := s.db.WithContext(ctx).Where("reference = ?", req.IdempotencyKey).First(&t).Error; err != nil {
+		return nil, fmt.Errorf("transaction not found: %w", err)
+	}
 	wallets, err := wallet.GetWallet(userID)
 	if err != nil {
 		return nil, fmt.Errorf("wallet not found")
@@ -256,13 +262,13 @@ func (s *billPaymentService) CreateBillPayment(ctx context.Context, userID uint,
 	}
 
 	// 5. Deduct wallet
-	if err := wallet.DeductWalletBalance(userID, uint64(amountFloat)); err != nil {
+	if err := wallet.DeductWalletBalance(userID, int64(amountFloat)); err != nil {
 		return nil, fmt.Errorf("insufficient balance or deduction failed: %v", err)
 	}
 
 	// 6. Create pending transaction
 	trans := transaction.Transaction{
-		Amount:    uint64(amountFloat),
+		Amount:    int64(amountFloat),
 		Reference: requestID,
 		Type:      "bill_payment",
 		Status:    "pending",
@@ -313,7 +319,7 @@ func (s *billPaymentService) CreateBillPayment(ctx context.Context, userID uint,
 	respBody, err := vtClient.DoRequest(ctx, "POST", "/api/pay", vtpassPayload, nil)
 	if err != nil {
 		// Refund on network failure
-		wallet.UpdateWalletBalance(userID, uint64(amountFloat))
+		wallet.UpdateWalletBalance(userID, int64(amountFloat))
 		trans.Status = "failed"
 		config.DB.Save(&trans)
 		billpayment.Status = "failed"
@@ -332,7 +338,7 @@ func (s *billPaymentService) CreateBillPayment(ctx context.Context, userID uint,
 
 	// 11. Update records based on outcome
 	if result.Content.Transactions.Status == "failed" || result.Code != "000" {
-		wallet.UpdateWalletBalance(userID, uint64(amountFloat))
+		wallet.UpdateWalletBalance(userID, int64(amountFloat))
 		trans.Status = "failed"
 		billpayment.Status = "failed"
 	} else {

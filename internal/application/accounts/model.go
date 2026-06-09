@@ -8,6 +8,7 @@ import (
 type VirtualAccount struct {
 	gorm.Model
 	WalletID      uint   `json:"wallet_id"`
+	 UserID uint `json:"user_id"`
 	AccountNumber string `json:"account_number"`
 	AccountName   string `json:"account_name"`
 	BankName      string `json:"bank_name"`

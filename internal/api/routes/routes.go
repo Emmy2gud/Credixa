@@ -22,7 +22,7 @@ import (
 
 func SetupRoutes(router *mux.Router) {
 
-	webhookSvc := webhooks.NewWebhookService()
+	webhookSvc := webhooks.NewWebhookService(config.DB)
 	webhookController := webhooks.NewWebhookController(webhookSvc)
 
 	walletSvc := wallet.NewWalletService(config.DB)

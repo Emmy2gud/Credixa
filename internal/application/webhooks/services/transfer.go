@@ -1,83 +1,70 @@
 package services
+
 import (
 	"fmt"
 	"net/http"
-	"payme/internal/config"
 	"payme/internal/application/transaction"
+	"payme/internal/application/transfer"
 	"payme/internal/application/wallet"
-	"strconv"
+	"payme/internal/config"
+
+	"gorm.io/gorm"
 )
-func HandleTransfer( payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{}){
-
-	// 2. Map fields (supports both snake_case and camelCase)
-	event, _ := payload["event"].(string)
-	if event == "" {
-		event, _ = payload["event.type"].(string)
-	}
-
+func HandleTransfer(payload map[string]interface{}, w http.ResponseWriter, source map[string]interface{},db *gorm.DB) {
+   var transfer transfer.Transfer
 	txRef, ok := source["tx_ref"].(string)
 	if !ok {
 		txRef, _ = source["txRef"].(string)
 	}
-
-	status, ok := source["status"].(string)
-	if !ok {
-		status, _ = source["status_code"].(string)
-	}
-
-	var amount float64
-	switch v := source["amount"].(type) {
-	case float64:
-		amount = v
-	case int:
-		amount = float64(v)
-	case string:
-		if val, err := strconv.ParseFloat(v, 64); err == nil {
-			amount = val
-		}
-	}
-
-	fmt.Printf("Webhook parsed: event=%s, status=%s, txRef=%s, amount=%f\n", event, status, txRef, amount)
-
 	if txRef == "" {
 		fmt.Println("Webhook Error: Missing tx_ref")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	// 3. Only process successful payments
-	if status != "successful" {
-		fmt.Printf("Webhook Info: Status is %s, skipping wallet update\n", status)
+	status, _ := source["status"].(string)
+
+	// Find the pending transfer record
+	var t transaction.Transaction
+	if err := config.DB.Where("reference = ? AND status = ?", txRef, "pending").First(&t).Error; err != nil {
+		fmt.Printf("Webhook: no pending transaction for ref %s: %v\n", txRef, err)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	var session transaction.Transaction
+	switch status {
+	case "successful":
+	
+		if err := config.DB.Model(&transaction.Transaction{}).
+			Where("reference = ?", txRef).
+			Update("status", "completed").Error; err != nil {
+				http.Error(w, "failed to update transaction", http.StatusInternalServerError)
+				return
+			}
+		db.Model(&transfer).
+			Where("reference = ?", txRef).
+			Update("status", "completed")
 
-	err := config.DB.Where("reference = ? AND status = ?", txRef, "pending").First(&session).Error
-	if err != nil {
-		fmt.Printf("Webhook DB Error: Could not find pending transaction with reference %s: %v\n", txRef, err)
-		w.WriteHeader(http.StatusOK)
-		return
+		fmt.Printf(" Transfer completed for ref: %s\n", txRef)
+
+	case "failed":
+	
+		if err := wallet.UpdateWalletBalance(uint(t.UserID), t.Amount); err != nil {
+			http.Error(w, "failed to refund wallet", http.StatusInternalServerError)
+			return
+		}
+		db.Model(&transaction.Transaction{}).
+			Where("reference = ?", txRef).
+			Update("status", "failed")
+		db.Model(&transfer).
+			Where("reference = ?", txRef).
+			Update("status", "failed")
+
+		fmt.Printf(" Transfer failed, wallet refunded for ref: %s\n", txRef)
+
+	default:
+		fmt.Printf("Webhook Info: unhandled transfer status %s for ref %s\n", status, txRef)
 	}
 
-	// 5. Credit wallet (IDEMPOTENT)
-	fmt.Printf("Crediting wallet for user %d with amount %d\n", session.UserID, session.Amount)
-	if err := wallet.UpdateWalletBalance(uint(session.UserID), session.Amount); err != nil {
-		fmt.Printf("Webhook Error: Failed to update wallet balance: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	// 6. Mark as successful
-	session.Status = "successful"
-	if err := config.DB.Save(&session).Error; err != nil {
-		fmt.Printf("Webhook Error: Failed to save transaction status: %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	fmt.Printf("✅ Success: Wallet credited and transaction updated for ref: %s\n", txRef)
 	w.WriteHeader(http.StatusOK)
-
 }

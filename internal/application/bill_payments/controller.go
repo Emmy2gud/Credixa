@@ -54,24 +54,9 @@ func (h *BillPaymentController) BillCategory(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// categorybody, _ := io.ReadAll(body)
-    // respbody, err := h.service.BillServiceCategory(body, categoryID)
+	
 	utils.JSON(w, http.StatusOK, body)
 }
-// func (h *BillPaymentController)BillCategory(w http.ResponseWriter, r *http.Request) {
-// 	// Implementation will go here
-// 	vars := mux.Vars(r)
-// 	categoryID := vars["category"]
-// 	body:=utils.ParseBody(r)
-
-// 	body, err := h.service.BillServiceCategory(body, categoryID)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	utils.JSON(w, http.StatusOK, body)
-// }
 
 
 func (h *BillPaymentController) VerifySubscription(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +82,12 @@ func (h *BillPaymentController) VerifySubscription(w http.ResponseWriter, r *htt
 }
 
 func (h *BillPaymentController) CreateBillPayment(w http.ResponseWriter, r *http.Request) {
+		var (
+		airtimeInput dto.CreateBillPaymentAirtimeRequest
+		dataInput    dto.CreateBillPaymentDataRequest
+		tvInput      dto.ChangeTvRequest
+		electricInput dto.ElectricityRequest
+	)
 	vars := mux.Vars(r)
 	serviceID := vars["serviceid"]
 	variationCode := vars["variationcode"]
@@ -114,12 +105,7 @@ func (h *BillPaymentController) CreateBillPayment(w http.ResponseWriter, r *http
 	}
 	defer r.Body.Close()
 
-	var (
-		airtimeInput dto.CreateBillPaymentAirtimeRequest
-		dataInput    dto.CreateBillPaymentDataRequest
-		tvInput      dto.ChangeTvRequest
-		electricInput dto.ElectricityRequest
-	)
+
 
 	// Decode directly into the right DTO based on serviceID
 	switch {

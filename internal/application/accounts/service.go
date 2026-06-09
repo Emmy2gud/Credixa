@@ -5,16 +5,15 @@ import (
 
 	"fmt"
 
- "payme/internal/adapters/flutterwave"
+	"payme/internal/adapters/flutterwave"
 	"payme/internal/application/accounts/dto"
 	"payme/internal/application/wallet"
-
 
 	"gorm.io/gorm"
 )
 
 type VirtualAccountService interface {
-	CreateVirtualAccount(ctx context.Context, input dto.CreateVirtualAccountRequest ) (dto.VirtualAccountResponse, error)
+	CreateVirtualAccount(ctx context.Context, input dto.CreateVirtualAccountRequest) (dto.VirtualAccountResponse, error)
 }
 
 type virtualAccountService struct {
@@ -27,17 +26,16 @@ func NewVirtualAccountService(db *gorm.DB) VirtualAccountService {
 	}
 }
 
-func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context,req dto.CreateVirtualAccountRequest) (dto.VirtualAccountResponse, error) {
+func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context, req dto.CreateVirtualAccountRequest) (dto.VirtualAccountResponse, error) {
 
 	var w wallet.Wallet
 
-	if err := s.db.WithContext(ctx).Where("user_id = ?", req.UserID).First(&w).Error; err != nil {      
-return dto.VirtualAccountResponse{},
+	if err := s.db.WithContext(ctx).Where("user_id = ?", req.UserID).First(&w).Error; err != nil {
+		return dto.VirtualAccountResponse{},
 			fmt.Errorf("wallet not found: %w", err)
 	}
-
-
-	flwResp, err :=adapters.NewClient().CreateVirtualAccount(ctx,req)
+   
+	flwResp, err := adapters.NewClient().CreateVirtualAccount(ctx, req)
 
 	if err != nil {
 		return dto.VirtualAccountResponse{}, err

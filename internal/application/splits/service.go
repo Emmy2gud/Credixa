@@ -11,14 +11,14 @@ import (
 
 type ParticipantInput struct {
 	UserID     uint64 `json:"user_id"`
-	Amount     uint64 `json:"amount"`
+	Amount     int64 `json:"amount"`
 	Percentage uint64 `json:"percentage"`
 }
 
 type CreateSplitBillInput struct {
 	Title             string             `json:"title"`
 	Description       string             `json:"description"`
-	TotalAmount       uint64             `json:"total_amount"`
+	TotalAmount       int64             `json:"total_amount"`
 	SplitType         string             `json:"split_type"`
 	ParticipantsCount int                `json:"participants_count"`
 	Participants      []ParticipantInput `json:"participants"`
@@ -54,11 +54,11 @@ func (s *splitService) CreateSplitBill(ctx context.Context, input CreateSplitBil
 		return 0, fmt.Errorf("could not create split bill: %w", err)
 	}
 
-	var creatorAmount, creatorPercentage uint64
+	var creatorAmount, creatorPercentage int64
 	for _, p := range input.Participants {
 		if p.UserID == uint64(userID) {
 			creatorAmount = p.Amount
-			creatorPercentage = p.Percentage
+			creatorPercentage = int64(p.Percentage)
 			break
 		}
 	}
@@ -67,7 +67,7 @@ func (s *splitService) CreateSplitBill(ctx context.Context, input CreateSplitBil
 		SplitBillID: splitbill.ID,
 		UserID:      uint64(userID),
 		Amount:      creatorAmount,
-		Percentage:  creatorPercentage,
+		Percentage:  uint64(creatorPercentage),
 		Status:      "accepted",
 	}
 	if err := s.db.WithContext(ctx).Create(&creatorParticipant).Error; err != nil {

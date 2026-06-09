@@ -6,23 +6,31 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
 	"payme/internal/application/webhooks/services"
+
+	"gorm.io/gorm"
 )
 
 type WebhookService interface {
 	ProcessFlutterwaveWebhook(ctx context.Context, w http.ResponseWriter, r *http.Request) error
 }
 
-type webhookService struct{}
+type webhookService struct{
+	db *gorm.DB
+}
 
-func NewWebhookService() WebhookService {
-	return &webhookService{}
+func NewWebhookService(db *gorm.DB) WebhookService {
+	return &webhookService{
+		db: db,
+	}
 }
 
 func (s *webhookService) ProcessFlutterwaveWebhook(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
 	signature := r.Header.Get("verif-hash")
 	secret := os.Getenv("FLW_SECRET_HASH")
 	var payload map[string]interface{}
+	
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		fmt.Printf("Webhook JSON decode error: %v\n", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -46,7 +54,7 @@ func (s *webhookService) ProcessFlutterwaveWebhook(ctx context.Context, w http.R
 	case "CARD_TRANSACTION":
 		services.HandleFunding(payload, w, r, source)
 	case "bank_transfer":
-		services.HandleTransfer(payload, w, r, source)
+		services.HandleTransfer(payload, w, source,s.db)
 	case "ussd":
 		fmt.Println("ussd")
 	case "transfer":

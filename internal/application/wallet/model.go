@@ -10,6 +10,7 @@ import (
 type Wallet struct {
 	gorm.Model	
 	UserID   uint    `json:"user_id"`
+
 	Balance  int64 `json:"balance"`
 	Currency string  `json:"currency"`
 	Status   string  `json:"status"`

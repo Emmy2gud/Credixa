@@ -11,8 +11,6 @@ import (
 
 func HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{}) {
 
-
-	// 2. Map fields (supports both snake_case and camelCase)
 	event, _ := payload["event"].(string)
 	if event == "" {
 		event, _ = payload["event.type"].(string)
@@ -80,6 +78,6 @@ func HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *htt
 		return
 	}
 
-	fmt.Printf("✅ Success: Wallet credited and transaction updated for ref: %s\n", txRef)
+	fmt.Printf("Success: Wallet credited and transaction updated for ref: %s\n", txRef)
 	w.WriteHeader(http.StatusOK)
 }

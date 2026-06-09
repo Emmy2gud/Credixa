@@ -41,10 +41,10 @@ func runDailyAutoSave(res Response,userID uint,savingswallet wallet.SavingsWalle
 	config.DB.Create(&savings)
 
 	//deducting the participant amount from his wallet
-	if err := wallet.UpdateSavingsWalletBalance(uint(userID), res.AutoSaveAmount); err != nil {
+	if err := wallet.UpdateSavingsWalletBalance(uint(userID), int64(res.AutoSaveAmount)); err != nil {
 		return 
 	}
-	if err := wallet.DeductWalletBalance(uint(userID), res.AutoSaveAmount); err != nil {
+	if err := wallet.DeductWalletBalance(uint(userID), int64(res.AutoSaveAmount)); err != nil {
 		return 
 	}
 	config.DB.Save(&savingswallet)

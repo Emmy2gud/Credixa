@@ -96,7 +96,7 @@ func (s *walletService) InitiateCardWalletFunding(ctx context.Context, userCard 
 	}
 	fundingSession := transaction.Transaction{
 		UserID:    userID,
-		Amount:    uint64(amountFloat),
+		Amount:    int64(amountFloat),
 		Status:    "pending",
 		Reference: userCard.TxRef,
 		WalletID:  w.ID,
@@ -306,7 +306,7 @@ func GetWallet(userID uint) (Wallet, error) {
 	return w, nil
 }
 
-func UpdateWalletBalance(userID uint, amount uint64) error {
+func UpdateWalletBalance(userID uint, amount int64) error {
 	var wallet Wallet
 
 	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
@@ -320,7 +320,7 @@ func UpdateWalletBalance(userID uint, amount uint64) error {
 	return nil
 }
 
-func DeductWalletBalance(userID uint, amount uint64) error {
+func DeductWalletBalance(userID uint, amount int64) error {
 	var wallet Wallet
 
 	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
@@ -334,7 +334,7 @@ func DeductWalletBalance(userID uint, amount uint64) error {
 	return nil
 }
 
-func UpdateSavingsWalletBalance(userID uint, amount uint64) error {
+func UpdateSavingsWalletBalance(userID uint, amount int64) error {
 	var wallet SavingsWallet
 
 	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
@@ -348,7 +348,7 @@ func UpdateSavingsWalletBalance(userID uint, amount uint64) error {
 	return nil
 }
 
-func DeductSavingsWalletBalance(userID uint, amount uint64) error {
+func DeductSavingsWalletBalance(userID uint, amount int64) error {
 	var wallet SavingsWallet
 
 	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
