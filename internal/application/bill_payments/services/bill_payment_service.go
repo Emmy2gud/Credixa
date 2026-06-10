@@ -1,4 +1,4 @@
-package bill_payments
+package services
 
 import (
 	"context"
@@ -6,24 +6,37 @@ import (
 	"fmt"
 
 	"os"
+	adapters "payme/internal/adapters/vtpass"
 	"payme/internal/application/bill_payments/dto"
-	"payme/internal/application/bill_payments/sub-services"
+	"payme/internal/application/bill_payments/models"
+	sub_services "payme/internal/application/bill_payments/sub-services"
 	"payme/internal/application/transaction"
 	"payme/internal/application/wallet"
-	"payme/internal/config"
+
 	"payme/pkg/httpx"
 	"payme/pkg/utils"
-	"strconv"
 
 	"gorm.io/gorm"
 )
+
+type billPaymentParams struct {
+	requestID      string
+	serviceID      string
+	variationCode  string
+	billType       string
+	amount         int64
+	idempotencyKey string
+	vtpassPayload  interface{}
+}
 
 type BillPaymentService interface {
 	GetBillerCategories(ctx context.Context) (dto.BillerCategoriesResponse, error)
 	GetBillerCategory(ctx context.Context, categoryID string) (dto.BillerCategoryResponse, error)
 	GetBillCategory(ctx context.Context, categoryID string) (dto.BillCategoryResponseTwo, error)
-	
-	CreateBillPayment(ctx context.Context, userID uint, serviceID, variationCode string, airtimeInput dto.CreateBillPaymentAirtimeRequest, dataInput dto.CreateBillPaymentDataRequest, tvInput dto.ChangeTvRequest, electricInput dto.ElectricityRequest) (*dto.BillPaymentResponse, error)
+	ProcessAirtime(ctx context.Context, userID uint, req dto.CreateBillPaymentAirtimeRequest) (*dto.BillPaymentResponse, error)
+	ProcessData(ctx context.Context, userID uint, req dto.CreateBillPaymentDataRequest) (*dto.BillPaymentResponse, error)
+	ProcessTV(ctx context.Context, userID uint, req dto.ChangeTvRequest) (*dto.BillPaymentResponse, error)
+	ProcessElectricity(ctx context.Context, userID uint, req dto.ElectricityRequest) (*dto.BillPaymentResponse, error)
 	VerifySubscription(ctx context.Context, serviceID string, electricityInput dto.VerifyElectricityRequest, tvinput dto.VerifyTvSubscriptionRequest) (interface{}, error)
 }
 
@@ -33,6 +46,21 @@ type billPaymentService struct {
 
 func NewBillPaymentService(db *gorm.DB) BillPaymentService {
 	return &billPaymentService{db: db}
+}
+
+func (s *billPaymentService) idempotencyCheck(ctx context.Context, key string) (*transaction.Transaction, error) {
+	if key == "" {
+		return nil, nil
+	}
+	var t transaction.Transaction
+	err := s.db.WithContext(ctx).Where("reference = ? AND status IN ('success','failed')", key).First(&t).Error
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("idempotency check failed: %w", err)
+	}
+	return &t, nil
 }
 
 func (s *billPaymentService) GetBillerCategories(ctx context.Context) (dto.BillerCategoriesResponse, error) {
@@ -92,11 +120,11 @@ func (s *billPaymentService) GetBillerCategory(ctx context.Context, categoryID s
 	}
 	var vtresponse dto.BillerCategoryResponse
 	if err := json.Unmarshal(respbody, &vtresponse); err != nil {
-    return dto.BillerCategoryResponse{}, err
-}
-return dto.BillerCategoryResponse{
-    Categories: vtresponse.Categories,
-}, nil
+		return dto.BillerCategoryResponse{}, err
+	}
+	return dto.BillerCategoryResponse{
+		Categories: vtresponse.Categories,
+	}, nil
 
 }
 
@@ -113,12 +141,11 @@ func (s *billPaymentService) GetBillCategory(ctx context.Context, categoryID str
 	if err != nil {
 		return dto.BillCategoryResponseTwo{}, err
 	}
-	categoryresp,_:= sub_services.BillServiceCategory(respbody,categoryID)
+	categoryresp, _ := sub_services.BillServiceCategory(respbody, categoryID)
 	// fmt.Println("categoryresp:",categoryresp)
-	return  categoryresp,nil
+	return categoryresp, nil
 
 }
-
 
 func (s *billPaymentService) VerifySubscription(ctx context.Context, serviceID string, electricityInput dto.VerifyElectricityRequest, tvinput dto.VerifyTvSubscriptionRequest) (interface{}, error) {
 	switch {
@@ -208,146 +235,98 @@ func (s *billPaymentService) VerifySubscription(ctx context.Context, serviceID s
 		return nil, fmt.Errorf("unsupported service type: %s", serviceID)
 	}
 }
-func (s *billPaymentService) CreateBillPayment(ctx context.Context, userID uint, serviceID, variationCode string, airtimeInput dto.CreateBillPaymentAirtimeRequest, dataInput dto.CreateBillPaymentDataRequest, tvInput dto.ChangeTvRequest, electricInput dto.ElectricityRequest) (*dto.BillPaymentResponse, error) {
 
-	// 1. Get wallet and idempotency
-	var t transaction.Transaction	
+func (s *billPaymentService) processPayment(ctx context.Context, userID uint, p billPaymentParams) (*dto.BillPaymentResponse, error) {
 
-
-   if err := s.db.WithContext(ctx).Where("reference = ?", req.IdempotencyKey).First(&t).Error; err != nil {
-		return nil, fmt.Errorf("transaction not found: %w", err)
+	// 1. Idempotency guard
+	if existing, err := s.idempotencyCheck(ctx, p.idempotencyKey); err != nil {
+		return nil, err
+	} else if existing != nil {
+		// Already processed — return a minimal replay response
+		// so the client is not charged twice.
+		return &dto.BillPaymentResponse{
+			Code: "000",
+			// Optionally populate from existing record if you store the response
+		}, nil
 	}
-	wallets, err := wallet.GetWallet(userID)
+
+	// 2. Get wallet
+	w, err := wallet.GetWallet(userID)
 	if err != nil {
-		return nil, fmt.Errorf("wallet not found")
+		return nil, fmt.Errorf("wallet not found: %w", err)
 	}
 
-	// 2. Extract amount and phone per service type — these live in the DTOs
-	var amountStr, phone string
-	switch {
-	case sub_services.IsElectricityService(serviceID):
-		amountStr = electricInput.Amount
-		phone = electricInput.Phone
-		electricInput.ServiceId = serviceID
-		electricInput.VariationCode = variationCode
-	case sub_services.IsTvService(serviceID):
-		amountStr = tvInput.Amount
-		phone = tvInput.Phone
-		tvInput.ServiceId = serviceID
-		tvInput.VariationCode = variationCode
-	case sub_services.IsMobileData(serviceID):
-		amountStr = dataInput.Amount
-		phone = dataInput.Phone
-		dataInput.ServiceId = serviceID
-		dataInput.VariationCode = variationCode
-	case sub_services.IsMobileVtu(serviceID):
-		amountStr = airtimeInput.Amount
-		phone = airtimeInput.Phone
-		airtimeInput.ServiceId = serviceID
-	default:
-		return nil, fmt.Errorf("unsupported service type: %s", serviceID)
-	}
-
-	// 3. Parse amount
-	amountFloat, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil || amountFloat <= 0 {
-		return nil, fmt.Errorf("invalid amount: %s", amountStr)
-	}
-	_ = phone // used in payload below
-
-	// 4. Generate request ID
+	// 3. Generate request ID (this also becomes the transaction reference)
 	requestID, err := utils.GenerateRequestID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate request ID: %v", err)
+		return nil, fmt.Errorf("failed to generate request ID: %w", err)
 	}
 
-	// 5. Deduct wallet
-	if err := wallet.DeductWalletBalance(userID, int64(amountFloat)); err != nil {
-		return nil, fmt.Errorf("insufficient balance or deduction failed: %v", err)
+	// 4. Deduct wallet (optimistic — refund on failure)
+	if err := wallet.DeductWalletBalance(userID, p.amount); err != nil {
+		return nil, fmt.Errorf("insufficient balance or deduction failed: %w", err)
 	}
 
-	// 6. Create pending transaction
+	// 5. Persist pending transaction
 	trans := transaction.Transaction{
-		Amount:    int64(amountFloat),
+		Amount:    p.amount,
 		Reference: requestID,
 		Type:      "bill_payment",
 		Status:    "pending",
 		UserID:    userID,
-		WalletID:  wallets.ID,
+		WalletID:  w.ID,
 	}
-	config.DB.Create(&trans)
+	if err := s.db.WithContext(ctx).Create(&trans).Error; err != nil {
+		// Refund immediately — we couldn't even save the record
+		wallet.UpdateWalletBalance(userID, p.amount)
+		return nil, fmt.Errorf("failed to create transaction record: %w", err)
+	}
 
-	// 7. Create pending bill payment record
-	billpayment := BillPayment{
+	// 6. Persist pending bill payment
+	billPay := models.BillPayment{
 		UserID:    userID,
-		WalletID:  wallets.ID,
-		BillType:  serviceID,
-		Provider:  variationCode,
-		Amount:    uint64(amountFloat),
+		WalletID:  w.ID,
+		BillType:  p.billType,
+		Provider:  p.variationCode,
+		Amount:    uint64(p.amount),
 		Reference: requestID,
 		Status:    "pending",
 	}
-	config.DB.Create(&billpayment)
-
-	// 8. Build the VTPass payload — inject the generated request_id
-	var vtpassPayload interface{}
-	switch {
-	case sub_services.IsElectricityService(serviceID):
-		electricInput.RequestID = requestID
-		vtpassPayload = electricInput
-	case sub_services.IsTvService(serviceID):
-		tvInput.RequestID = requestID
-		vtpassPayload = tvInput
-	case sub_services.IsMobileData(serviceID):
-		dataInput.RequestID = requestID
-		vtpassPayload = dataInput
-	case sub_services.IsMobileVtu(serviceID):
-		airtimeInput.RequestID = requestID
-		vtpassPayload = airtimeInput
-	}
-
-	// 9. Call VTPass
-	vtClient := httpx.New(
-		"https://sandbox.vtpass.com",
-		map[string]string{
-			"api-key":      os.Getenv("VTPASS_API_KEY"),
-			"secret-key":   os.Getenv("VTPASS_SECRET_KEY"),
-			"Content-Type": "application/json",
-		},
-	)
-
-	respBody, err := vtClient.DoRequest(ctx, "POST", "/api/pay", vtpassPayload, nil)
-	if err != nil {
-		// Refund on network failure
-		wallet.UpdateWalletBalance(userID, int64(amountFloat))
+	if err := s.db.WithContext(ctx).Create(&billPay).Error; err != nil {
+		wallet.UpdateWalletBalance(userID, p.amount)
 		trans.Status = "failed"
-		config.DB.Save(&trans)
-		billpayment.Status = "failed"
-		config.DB.Save(&billpayment)
-		return nil, fmt.Errorf("vtpass request failed: %v", err)
+		s.db.WithContext(ctx).Save(&trans)
+		return nil, fmt.Errorf("failed to create bill payment record: %w", err)
 	}
 
-	// 10. Parse and type the response
+	// 7. Call VTPass
+	respBody, err := adapters.NewClient().CreateBillPayment(ctx, p.vtpassPayload)
+	if err != nil {
+		wallet.UpdateWalletBalance(userID, p.amount)
+		trans.Status = "failed"
+		billPay.Status = "failed"
+		s.db.WithContext(ctx).Save(&trans)
+		s.db.WithContext(ctx).Save(&billPay)
+		return nil, fmt.Errorf("vtpass request failed: %w", err)
+	}
+
+	// 8. Parse response
 	var result dto.BillPaymentResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse vtpass response: %v", err)
+		return nil, fmt.Errorf("failed to parse vtpass response: %w", err)
 	}
 
-	fmt.Printf("VTPass [%s] response code=%s status=%s\n",
-		serviceID, result.Code, result.Content.Transactions.Status)
-
-	// 11. Update records based on outcome
+	// 9. Update records based on VTPass outcome
 	if result.Content.Transactions.Status == "failed" || result.Code != "000" {
-		wallet.UpdateWalletBalance(userID, int64(amountFloat))
+		wallet.UpdateWalletBalance(userID, p.amount)
 		trans.Status = "failed"
-		billpayment.Status = "failed"
+		billPay.Status = "failed"
 	} else {
 		trans.Status = "success"
-		billpayment.Status = "success"
+		billPay.Status = "success"
 	}
 	s.db.WithContext(ctx).Save(&trans)
-	s.db.WithContext(ctx).Save(&billpayment)
+	s.db.WithContext(ctx).Save(&billPay)
 
 	return &result, nil
 }
-

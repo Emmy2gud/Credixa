@@ -10,21 +10,7 @@ import (
 
 )
 
-// type Client struct {
-// 	httpClient *httpx.Client
-// }
 
-// func NewClient() *Client {
-// 	return &Client{
-// 		httpClient: httpx.New(
-// 			"https://api.flutterwave.com",
-// 			map[string]string{
-// 				"Authorization": "Bearer " + os.Getenv("FLW_SECRET_KEY"),
-// 				"Content-Type": "application/json",
-// 			},
-// 		),
-// 	}
-// }
 func (c *Client) CreateTransfers(ctx context.Context,req dto.CreateTransferRequest) (*CreateTransferResponse, error) {
 
 	flwReq := CreateTransferRequest{

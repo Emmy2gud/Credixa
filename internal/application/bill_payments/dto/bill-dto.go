@@ -82,42 +82,48 @@ type VerifyElectricitySubscriptionResponse struct {
 	WrongBillersCode    bool   `json:"WrongBillersCode"`
 }
 
+// ── Requests ──────────────────────────────────────────────────────────────────
+ 
 type ElectricityRequest struct {
-	RequestID     string `json:"request_id"`
-	ServiceId     string `json:"serviceID"`
-	VariationCode string `json:"variation_code"`
-	BillersCode   string `json:"billersCode"`
-	MeterNo       string `json:"meterNo"`
-	Amount        string `json:"amount"`
-	Phone         string `json:"phone"`
+	RequestID      string `json:"request_id"`
+	ServiceId      string `json:"serviceID"`
+	VariationCode  string `json:"variation_code"`
+	BillersCode    string `json:"billersCode"`
+	MeterNo        string `json:"meterNo"`
+	Amount         int64  `json:"amount"`
+	Phone          string `json:"phone"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
-
+ 
 type ChangeTvRequest struct {
 	RequestID        string `json:"request_id"`
 	ServiceId        string `json:"serviceID"`
 	VariationCode    string `json:"variation_code"`
 	BillersCode      string `json:"billersCode"`
-	Amount           string `json:"amount"`
+	Amount           int64  `json:"amount"`
 	Phone            string `json:"phone"`
 	SubscriptionType string `json:"subscription_type"`
 	Quantity         string `json:"quantity"`
+	IdempotencyKey   string `json:"idempotency_key"`
 }
-
+ 
 type CreateBillPaymentAirtimeRequest struct {
-	RequestID string `json:"request_id"`
-	ServiceId string `json:"serviceID"`
-	Amount    string `json:"amount"`
-	Phone     string `json:"phone"`
+	RequestID      string `json:"request_id"`
+	ServiceId      string `json:"serviceID"`
+	Amount         int64  `json:"amount"`
+	Phone          string `json:"phone"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
+ 
 type CreateBillPaymentDataRequest struct {
-	RequestID     string `json:"request_id"`
-	ServiceId     string `json:"serviceID"`
-	VariationCode string `json:"variation_code"`
-	BillersCode   string `json:"billersCode"`
-	Amount        string `json:"amount"`
-	Phone         string `json:"phone"`
+	RequestID      string `json:"request_id"`
+	ServiceId      string `json:"serviceID"`
+	VariationCode  string `json:"variation_code"`
+	BillersCode    string `json:"billersCode"`
+	Amount         int64  `json:"amount"`
+	Phone          string `json:"phone"`
+	IdempotencyKey string `json:"idempotency_key"`
 }
-
 // ── SHARED RESPONSE DTO ───────────────────────────────────────────────────────
 // All four service types return the same content.transactions shape.
 
@@ -142,12 +148,33 @@ type VTPassContent struct {
 	Transactions VTPassTransactions `json:"transactions"`
 }
 
+// type BillPaymentResponse struct {
+// 	Code                string        `json:"code"`
+// 	Content             VTPassContent `json:"content"`
+// 	ResponseDescription string        `json:"response_description"`
+// 	RequestID           string        `json:"requestId"`
+// 	Amount              float64       `json:"amount"`
+// 	TransactionDate     string        `json:"transaction_date"`
+// 	PurchasedCode       string        `json:"purchased_code"`
+// }
+type CreateBillPaymentRequest struct {
+	RequestID        string `json:"request_id"`
+	ServiceId        string `json:"serviceID"`
+	VariationCode    string `json:"variation_code"`
+	BillersCode      string `json:"billersCode"`
+	Amount           int64  `json:"amount"`
+	Phone            string `json:"phone"`
+	MeterNo        string `json:"meterNo"`
+	SubscriptionType string `json:"subscription_type"`
+	Quantity         string `json:"quantity"`
+	
+}
+
 type BillPaymentResponse struct {
-	Code                string        `json:"code"`
-	Content             VTPassContent `json:"content"`
-	ResponseDescription string        `json:"response_description"`
-	RequestID           string        `json:"requestId"`
-	Amount              float64       `json:"amount"`
-	TransactionDate     string        `json:"transaction_date"`
-	PurchasedCode       string        `json:"purchased_code"`
+	Code    string `json:"code"`
+	Content struct {
+		Transactions struct {
+			Status string `json:"status"`
+		} `json:"transactions"`
+	} `json:"content"`
 }

@@ -3,11 +3,13 @@ package bill_payments
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+
 	"net/http"
 	"payme/internal/api/middleware"
+
 	"payme/internal/application/bill_payments/dto"
-	"payme/internal/application/bill_payments/sub-services"
+	"payme/internal/application/bill_payments/services"
+	sub_services "payme/internal/application/bill_payments/sub-services"
 
 	"payme/pkg/utils"
 
@@ -15,10 +17,11 @@ import (
 )
 
 type BillPaymentController struct {
-	service BillPaymentService
+	service services.BillPaymentService
 }
 
-func NewBillPaymentController(service BillPaymentService) *BillPaymentController {
+func NewBillPaymentController(service services.BillPaymentService) *BillPaymentController {
+
 	return &BillPaymentController{service: service}
 }
 
@@ -54,10 +57,9 @@ func (h *BillPaymentController) BillCategory(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	utils.JSON(w, http.StatusOK, body)
 }
-
 
 func (h *BillPaymentController) VerifySubscription(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -82,62 +84,88 @@ func (h *BillPaymentController) VerifySubscription(w http.ResponseWriter, r *htt
 }
 
 func (h *BillPaymentController) CreateBillPayment(w http.ResponseWriter, r *http.Request) {
-		var (
-		airtimeInput dto.CreateBillPaymentAirtimeRequest
-		dataInput    dto.CreateBillPaymentDataRequest
-		tvInput      dto.ChangeTvRequest
-		electricInput dto.ElectricityRequest
-	)
 	vars := mux.Vars(r)
 	serviceID := vars["serviceid"]
 	variationCode := vars["variationcode"]
-
+	requestID, err := utils.GenerateRequestID()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	userID, ok := middleware.GetUserID(r)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "failed to read request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
+	ctx := r.Context()
 
-
-
-	// Decode directly into the right DTO based on serviceID
 	switch {
 	case sub_services.IsElectricityService(serviceID):
-		if err := json.Unmarshal(body, &electricInput); err != nil {
+		var req dto.ElectricityRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid electricity request body", http.StatusBadRequest)
 			return
 		}
+		req.ServiceId = serviceID
+		req.VariationCode = variationCode
+		req.RequestID = requestID
+
+		resp, err := h.service.ProcessElectricity(ctx, userID, req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		utils.JSON(w, http.StatusOK, resp)
+
 	case sub_services.IsTvService(serviceID):
-		if err := json.Unmarshal(body, &tvInput); err != nil {
+		var req dto.ChangeTvRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid TV request body", http.StatusBadRequest)
 			return
 		}
+		req.ServiceId = serviceID
+		req.VariationCode = variationCode
+		req.RequestID = requestID
+		resp, err := h.service.ProcessTV(ctx, userID, req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		utils.JSON(w, http.StatusOK, resp)
+
 	case sub_services.IsMobileData(serviceID):
-		if err := json.Unmarshal(body, &dataInput); err != nil {
+		var req dto.CreateBillPaymentDataRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid data request body", http.StatusBadRequest)
 			return
 		}
+		req.ServiceId = serviceID
+		req.VariationCode = variationCode
+		req.RequestID = requestID
+		resp, err := h.service.ProcessData(ctx, userID, req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		utils.JSON(w, http.StatusOK, resp)
+
 	case sub_services.IsMobileVtu(serviceID):
-		if err := json.Unmarshal(body, &airtimeInput); err != nil {
+		var req dto.CreateBillPaymentAirtimeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "invalid airtime request body", http.StatusBadRequest)
 			return
 		}
+		req.ServiceId = serviceID
+		req.RequestID = requestID
+		resp, err := h.service.ProcessAirtime(ctx, userID, req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		utils.JSON(w, http.StatusOK, resp)
+
 	default:
 		http.Error(w, "unsupported service type: "+serviceID, http.StatusBadRequest)
-		return
 	}
-resp, err := h.service.CreateBillPayment(r.Context(), userID, serviceID, variationCode,airtimeInput, dataInput, tvInput, electricInput)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	utils.JSON(w, http.StatusOK, resp)
 }

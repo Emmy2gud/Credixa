@@ -109,9 +109,7 @@ func (s *transferService) InitializeFunding(ctx context.Context, req dto.CreateT
 	}
 
 	// 3. Determine transfer type
-	isInternal := s.db.WithContext(ctx).
-		Where("account_number = ?", req.AccountNumber).
-		First(&virtualAccount).Error == nil
+	isInternal := s.db.WithContext(ctx).Where("account_number = ?", req.AccountNumber).First(&virtualAccount).Error == nil
 	if isInternal {
 		return HandleInternalTransfer(ctx, req, w, virtualAccount,s.db)
 	}

@@ -1,11 +1,11 @@
 package routes
 
 import (
-	
 	"payme/internal/api/middleware"
 	"payme/internal/application/accounts"
 	"payme/internal/application/auth"
 	"payme/internal/application/bill_payments"
+	"payme/internal/application/bill_payments/services"
 	"payme/internal/application/notifications"
 	"payme/internal/application/splits"
 	"payme/internal/application/transaction"
@@ -40,7 +40,7 @@ func SetupRoutes(router *mux.Router) {
 	notificationSvc := notifications.NewNotificationService(config.DB)
 	notificationController := notifications.NewNotificationController(notificationSvc)
 
-	billPaymentsSvc := bill_payments.NewBillPaymentService(config.DB)
+	billPaymentsSvc := services.NewBillPaymentService(config.DB)
 	billPaymentsController := bill_payments.NewBillPaymentController(billPaymentsSvc)
 
 	splitSvc := splits.NewSplitService(config.DB)

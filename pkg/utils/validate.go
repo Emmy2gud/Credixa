@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func ValidateRegister(fullname, email, password string) error {
+func ValidateRegister(fullname, email, phoneNumber, password string) error {
 	if strings.TrimSpace(fullname) == "" {
 		return errors.New("fullname is required")
 	}

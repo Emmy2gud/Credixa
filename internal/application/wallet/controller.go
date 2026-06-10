@@ -6,26 +6,11 @@ import (
 	"net/http"
 
 	"payme/internal/api/middleware"
+	"payme/internal/application/wallet/dto"
 	"payme/pkg/utils"
 
 	"github.com/gorilla/mux"
 )
-
-type ChargeRequest struct {
-	CardBrand   string `json:"card_brand"`
-	Last4       string `json:"last4"`
-	CardNumber  string `json:"card_number"`
-	CVV         string `json:"cvv"`
-	ExpiryMonth string `json:"expiry_month"`
-	ExpiryYear  string `json:"expiry_year"`
-	Currency    string `json:"currency"`
-	Amount      string `json:"amount"`
-	Email       string `json:"email"`
-	Fullname    string `json:"fullname"`
-	TxRef       string `json:"tx_ref"` // unique ID you generate
-	Token       string `json:"token"`
-	WalletID    uint   `json:"wallet_id"`
-}
 
 type ChargeWithTokenRequest struct {
 	Token  string `json:"token"`
@@ -49,7 +34,7 @@ func (h *WalletController) GetWalletBalance(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *WalletController) InitiateWalletFunding(w http.ResponseWriter, r *http.Request) {
-	var userCard ChargeRequest
+	var userCard dto.ChargeRequest
 	utils.ParseBody(r, &userCard)
 
 	userID, ok := middleware.GetUserID(r)
@@ -68,15 +53,13 @@ func (h *WalletController) InitiateWalletFunding(w http.ResponseWriter, r *http.
 		return
 	}
 	fmt.Println(result)
-	body, err := json.Marshal(response)
+	resp, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	utils.JSON(w,http.StatusOK,resp)
 }
 
 func (h *WalletController) AuthorizeCardFunding(w http.ResponseWriter, r *http.Request) {
@@ -93,15 +76,13 @@ func (h *WalletController) AuthorizeCardFunding(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	result, err := h.service.AuthorizeCardFundingService(r.Context(), req.TxRef, req.Pin)
+	resp, err := h.service.AuthorizeCardFundingService(r.Context(), req.TxRef, req.Pin)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+		utils.JSON(w,http.StatusOK,resp)
 }
 
 func (h *WalletController) ValidateWalletFunding(w http.ResponseWriter, r *http.Request) {
@@ -124,10 +105,10 @@ func (h *WalletController) ValidateWalletFunding(w http.ResponseWriter, r *http.
 	}
 
 	// Just return result — DO NOT CREDIT WALLET HERE
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	utils.JSON(w,http.StatusOK,map[string]interface{}{
 		"message": "Payment processing, awaiting confirmation",
 		"data":    result,
+		"status":"pending",
 	})
 }
 
@@ -152,8 +133,6 @@ func (h *WalletController) VerifyCardCharge(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	body, _ := json.Marshal(result)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(body)
+	resp, _ := json.Marshal(result)
+	utils.JSON(w,http.StatusOK,resp)
 }
