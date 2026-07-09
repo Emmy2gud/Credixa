@@ -95,13 +95,12 @@ type AuthorizationCardResponse struct {
 
 type ValidateCardRequest struct {
 	FlwRef string `json:"flw_ref"`
-	Otp string `json:"otp"`
-	Type string `json:"type"`
-
+	Otp    string `json:"otp"`
+	Type   string `json:"type"`
 }
 type VerifyCardRequest struct {
 	TxRef string `json:"flw_ref"`
-	Otp string `json:"otp"`
+	Otp   string `json:"otp"`
 }
 
 type ValidateCardResponse struct {
@@ -150,5 +149,46 @@ type VerifyChargeResponse struct {
 			Email       string `json:"email"`
 			CreatedAt   string `json:"created_at"`
 		}
+	}
+}
+
+// kyc verification
+type InitiateKycTier2Request struct {
+	Bvn         string `json:"bvn"`
+	FirstName   string `json:"firstname"`
+	LastName    string `json:"lastname"`
+	RedirectUrl string `json:"redirect_url"`
+}
+type InitiateKycTier2Response struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		Url string `json:"url"`
+		Ref string `json:"ref"`
+	}
+}
+
+type VerifyKycTier2Request struct {
+	Ref string `json:"ref"`
+}
+
+type RetrieveBvnResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		Status  string `json:"status"`
+		BvnData struct {
+			Bvn         string `json:"bvn"`
+			DateOfBirth string `json:"date_of_birth"`
+			PhoneNumber string `json:"phone_number"`
+			FirstName   string `json:"firstname"`
+			LastName    string `json:"lastname"`
+			Gender      string `json:"gender"`
+			Email       string `json:"email"`
+			Address     string `json:"address"`
+			Nin         string `json:"nin"`
+		}
+		Reference string `json:"reference"`
+		CreatedAt string `json:"created_at"`
 	}
 }

@@ -20,7 +20,7 @@ import (
 type AuthService interface {
 	SignUp(ctx context.Context, req dto.SignUpRequest) (dto.SignUpResponse, error)
 	Login(ctx context.Context, req dto.LoginRequest) (dto.LoginResponse, error)
-
+	VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (dto.SignUpResponse, error)
 	ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest) (dto.ForgotPasswordResponse, error)
 	ResetPassword(ctx context.Context, req dto.ResetPasswordRequest, tokenString string) (dto.ResetPasswordResponse, error)
 }
@@ -51,25 +51,53 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 	if err != nil {
 		return dto.SignUpResponse{}, errors.New("error hashing password")
 	}
-	otp := utils.GenerateOTP()
-	verification := user.EmailVerification{
-		Email:     req.Email,
-		FullName:  req.FullName,
-		Password:  hashedPassword,
-		OTP:       otp,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+	now := time.Now()
+
+	// --- RATE LIMIT CHECK ---
+	var verification user.EmailVerification
+	err = s.db.WithContext(ctx).Where("email = ?", req.Email).First(&verification).Error
+
+	if err == nil {
+
+		if now.Sub(verification.FirstOTPRequestAt) < time.Hour {
+			// Still inside the 1-hour window
+			if verification.OTPRequestCount >= 5 {
+				return dto.SignUpResponse{}, errors.New("too many OTP requests, please try again later")
+			}
+			// under the limit → bump count
+			verification.OTPRequestCount++
+		} else {
+			// window expired → reset
+			verification.FirstOTPRequestAt = now
+			verification.OTPRequestCount = 1
+		}
+
+		// update OTP + expiry + latest details
+		verification.OTP = utils.GenerateOTP()
+		verification.ExpiresAt = now.Add(5 * time.Minute)
+		verification.FullName = req.FullName
+		verification.Password = hashedPassword
+
+		if err := s.db.WithContext(ctx).Save(&verification).Error; err != nil {
+			return dto.SignUpResponse{}, errors.New("could not update verification")
+		}
+	} else {
+		// No record yet — first request ever for this email
+		verification = user.EmailVerification{
+			Email:             req.Email,
+			FullName:          req.FullName,
+			Password:          hashedPassword,
+			OTP:               utils.GenerateOTP(),
+			ExpiresAt:         now.Add(5 * time.Minute),
+			OTPRequestCount:   1,
+			FirstOTPRequestAt: now,
+		}
+		if err := s.db.WithContext(ctx).Create(&verification).Error; err != nil {
+			return dto.SignUpResponse{}, errors.New("could not create user")
+		}
 	}
 
-	if err := s.db.WithContext(ctx).Create(&verification).Error; err != nil {
-		return dto.SignUpResponse{}, errors.New("could not create user")
-	}
-
-	if err := s.db.Create(&verification).Error; err != nil {
-		return dto.SignUpResponse{}, err
-	}
-
-	if err := utils.SendOTPEmail(req.Email, otp); err != nil {
-
+	if err := utils.SendOTPEmail(req.Email, verification.OTP); err != nil {
 		return dto.SignUpResponse{}, err
 	}
 
@@ -92,9 +120,7 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 			errors.New("invalid otp")
 	}
 
-	if time.Now().After(
-		verification.ExpiresAt,
-	) {
+	if time.Now().After(verification.ExpiresAt) {
 		return dto.SignUpResponse{},
 			errors.New("otp expired")
 	}
@@ -104,6 +130,8 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 		Password: verification.Password,
 		FullName: verification.FullName,
 		Role:     "users",
+		KYCStatus: "pending",
+		Tier:      1,
 	}
 
 	if err := s.db.Create(&user).Error; err != nil {
@@ -121,10 +149,10 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 		return dto.SignUpResponse{}, err
 	}
 
-	token, err := utils.GenerateToken(
-		user.ID,
-		user.Role,
-	)
+	// token, err := utils.GenerateToken(
+	// 	user.ID,
+	// 	user.Role,
+	// )
 
 	if err != nil {
 		return dto.SignUpResponse{}, err
@@ -135,33 +163,57 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 	return dto.SignUpResponse{
 		Message: "Account verified",
 		UserID:  user.ID,
-		Token:   token,
+		// Token:   token,
+		FullName: user.FullName,
+		Email:  user.Email,
 	}, nil
 }
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (dto.LoginResponse, error) {
-	var user user.User
+	var u user.User
 
-	if err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&user).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&u).Error; err != nil {
 		return dto.LoginResponse{}, errors.New("email not found")
 	}
 
-	err := utils.CheckPassword(user.Password, req.Password)
-	if err != nil {
-		return dto.LoginResponse{}, errors.New("error hashing password")
-
+	// --- CHECK IF ACCOUNT IS CURRENTLY LOCKED ---
+	if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
+		remaining := time.Until(*u.LockedUntil).Round(time.Second)
+		return dto.LoginResponse{}, fmt.Errorf("account locked, try again in %s", remaining)
 	}
 
-	// ✅ Generate JWT token
-	token, err := utils.GenerateToken(user.ID, user.Role)
+	// --- CHECK PASSWORD ---
+	err := utils.CheckPassword(u.Password, req.Password)
+	if err != nil {
+		u.FailedAttempts++
+
+		if u.FailedAttempts >= 3 {
+			lockUntil := time.Now().Add(15 * time.Minute)
+			u.LockedUntil = &lockUntil
+			u.FailedAttempts = 0
+			s.db.WithContext(ctx).Save(&u)
+			return dto.LoginResponse{}, errors.New("too many failed attempts, account locked for 15 minutes")
+		}
+
+		s.db.WithContext(ctx).Save(&u)
+		return dto.LoginResponse{}, errors.New("invalid password")
+	}
+
+	// --- SUCCESSFUL LOGIN: reset attempts ---
+	u.FailedAttempts = 0
+	u.LockedUntil = nil
+	s.db.WithContext(ctx).Save(&u)
+
+	token, err := utils.GenerateToken(u.ID, u.Role)
 	if err != nil {
 		return dto.LoginResponse{}, errors.New("could not generate token")
 	}
 
 	return dto.LoginResponse{
-		Message: "User logged in successfully",
-		Token:   token,
+		Message:  "User logged in successfully",
+		Token:    token,
+		FullName: u.FullName,
+		Email:    u.Email,
 	}, nil
-
 }
 
 func (s *authService) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest) (dto.ForgotPasswordResponse, error) {

@@ -1,62 +1,75 @@
 package savings
 
 import (
-
-    "payme/internal/config"
+	"log"
+	"time"
 
 	"payme/internal/application/wallet"
+	"payme/internal/config"
 
+	"github.com/robfig/cron/v3"
 )
 
+// InitAutoSaveScheduler starts the global background cron job for auto-savings.
+// This should be called once during application boot (e.g. in main.go).
+func InitAutoSaveScheduler() {
+	scheduler := cron.New()
 
-func runAutoSaveBatch(res Response, frequency string,userID uint) {
-		var savingswallet wallet.SavingsWallet
-  //check if frequenc is daily,weekly or monthly
-  
-  switch frequency {
-  case "daily":
-    runDailyAutoSave(res,userID,savingswallet)
-  case "weekly":
-    runWeeklyAutoSave(res,userID,savingswallet)
-  case "monthly":
-    runMonthlyAutoSave(res,userID,savingswallet)
+	// Daily auto-saves at midnight: "0 0 * * *"
+	_, err := scheduler.AddFunc("0 0 * * *", func() {
+		log.Println("[Cron] Running daily auto-save check...")
+		processAutoSaves("daily")
+	})
+	if err != nil {
+		log.Println("[Cron] failed to add daily job:", err)
+	}
+
+	// Weekly auto-saves on Mondays at midnight: "0 0 * * 1"
+	_, err = scheduler.AddFunc("0 0 * * 1", func() {
+		log.Println("[Cron] Running weekly auto-save check...")
+		processAutoSaves("weekly")
+	})
+	if err != nil {
+		log.Println("[Cron] failed to add weekly job:", err)
+	}
+
+	// Monthly auto-saves on the 1st of the month at midnight: "0 0 1 * *"
+	_, err = scheduler.AddFunc("0 0 1 * *", func() {
+		log.Println("[Cron] Running monthly auto-save check...")
+		processAutoSaves("monthly")
+	})
+	if err != nil {
+		log.Println("[Cron] failed to add monthly job:", err)
+	}
+
+	scheduler.Start()
+	log.Println("[Cron] Auto-save scheduler started ✓")
+}
+
+// processAutoSaves queries all active auto-saves for a given frequency and processes them.
+func processAutoSaves(frequency string) {
+    var users []PersonalSaving
+    if err := config.DB.Where("auto_save = ? AND auto_save_frequency = ?", true, frequency).Find(&users).Error; err != nil {
+        log.Println("[Cron] failed to fetch auto-save users:", err)
+        return
+    }
+
+    for _, saving := range users {
+        runAutoSave(saving)
+    }
+}
+
+func runAutoSave(saving PersonalSaving) {
+    if err := wallet.DeductWalletBalance(saving.UserID, int64(saving.AutoSaveAmount)); err != nil {
+        log.Println("[Cron] deduct failed for user", saving.UserID, err)
+        return
+    }
+    if err := wallet.UpdateSavingsWalletBalance(saving.UserID, int64(saving.AutoSaveAmount)); err != nil {
+        log.Println("[Cron] savings wallet update failed for user", saving.UserID, err)
+        return
+    }
+
+    saving.CurrentAmount +=saving.AutoSaveAmount
+    saving.LastAutoSaveDate = time.Now()
+    config.DB.Save(&saving)
   }
-
-}
-
-
-func runDailyAutoSave(res Response,userID uint,savingswallet wallet.SavingsWallet) {
-   savings := PersonalSaving{
-	UserID: userID,
-	TargetAmount: res.TargetAmount,
-    CurrentAmount: res.CurrentAmount,
-    Purpose: res.Purpose,
-    Status: res.Status,
-    AutoSave: res.AutoSave,
-    AutoSaveFrequency: res.AutoSaveFrequency,
-    AutoSaveAmount: res.AutoSaveAmount,
-    LastAutoSaveDate: res.LastAutoSaveDate,
-
-}
-	config.DB.Create(&savings)
-
-	//deducting the participant amount from his wallet
-	if err := wallet.UpdateSavingsWalletBalance(uint(userID), int64(res.AutoSaveAmount)); err != nil {
-		return 
-	}
-	if err := wallet.DeductWalletBalance(uint(userID), int64(res.AutoSaveAmount)); err != nil {
-		return 
-	}
-	config.DB.Save(&savingswallet)
-
-
-}
-
-	
-
-func runWeeklyAutoSave(res Response, userID uint,savingswallet wallet.SavingsWallet) {
-
-}
-func runMonthlyAutoSave(res Response, userID uint,savingswallet wallet.SavingsWallet) {
-
-}

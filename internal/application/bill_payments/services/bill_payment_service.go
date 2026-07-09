@@ -242,8 +242,7 @@ func (s *billPaymentService) processPayment(ctx context.Context, userID uint, p 
 	if existing, err := s.idempotencyCheck(ctx, p.idempotencyKey); err != nil {
 		return nil, err
 	} else if existing != nil {
-		// Already processed — return a minimal replay response
-		// so the client is not charged twice.
+	
 		return &dto.BillPaymentResponse{
 			Code: "000",
 			// Optionally populate from existing record if you store the response
@@ -277,7 +276,7 @@ func (s *billPaymentService) processPayment(ctx context.Context, userID uint, p 
 		WalletID:  w.ID,
 	}
 	if err := s.db.WithContext(ctx).Create(&trans).Error; err != nil {
-		// Refund immediately — we couldn't even save the record
+	
 		wallet.UpdateWalletBalance(userID, p.amount)
 		return nil, fmt.Errorf("failed to create transaction record: %w", err)
 	}

@@ -11,8 +11,8 @@ type PersonalSaving struct {
     gorm.Model
     UserID        uint      `json:"user_id" gorm:"not null;index"`
     WalletID      uint      `json:"wallet_id" gorm:"not null"`
-    TargetAmount  float64   `json:"target_amount" gorm:"type:decimal(15,2);not null"`
-    CurrentAmount float64   `json:"current_amount" gorm:"type:decimal(15,2);default:0"`
+    TargetAmount  uint64   `json:"target_amount" gorm:"type:decimal(15,2);not null"`
+    CurrentAmount uint64   `json:"current_amount" gorm:"type:decimal(15,2);default:0"`
     Purpose       string    `json:"purpose" gorm:"not null"` // e.g. "Rent", "Laptop"
     Status        string    `json:"status" gorm:"default:'active'"` // active | completed | cancelled
     AutoSave      bool      `json:"auto_save" gorm:"default:false"`
@@ -25,8 +25,8 @@ type GroupSaving struct {
 	gorm.Model	
 	ID            string    `json:"id"`
 	Name          string    `json:"name"`
-	TargetAmount  float64   `json:"target_amount"`
-	CurrentAmount float64   `json:"current_amount"`
+	TargetAmount  uint64   `json:"target_amount"`
+	CurrentAmount uint64   `json:"current_amount"`
 	Status        string    `json:"status"`
 	
 }

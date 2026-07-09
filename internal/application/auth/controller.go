@@ -98,6 +98,17 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	utils.JSON(w,http.StatusOK,resp)
 }
 
-func VerifyEmail(w http.ResponseWriter, r *http.Request) {
-	// VerifyEmail logic here
+func  (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var u dto.VerifyOTPRequest
+	utils.ParseBody(r, &u)
+
+	resp, err := h.service.VerifyOTP(r.Context(), u)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }

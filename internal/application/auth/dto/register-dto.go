@@ -12,10 +12,13 @@ type SignUpRequest struct {
 type SignUpResponse struct {
     Message string `json:"message"`
     UserID  uint   `json:"user_id"`
-	Token   string `json:"access_token"`
+	// Token   string `json:"access_token"`
+    FullName string `json:"full_name"`
+	Email    string `json:"email" `
 }
 
 type VerifyOTPRequest struct {
 	Email string `json:"email"`
 	OTP   string `json:"otp"`
+      FullName string `json:"full_name"`
 }

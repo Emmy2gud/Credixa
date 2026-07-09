@@ -14,17 +14,27 @@ type User struct {
 	Password    string `json:"password" `
 	Role        string `json:"role"` // user, admin
 	ProfilePicture string `json:"profile_picture"`
+	IsDeleted   bool   `json:"is_deleted"`
+	Address     string `json:"address"`
+	DateOfBirth string `json:"date_of_birth"`
+    NextOfKinName string `json:"next_of_kin_name"`
+	NextOfKinRelationship string `json:"next_of_kin_relationship"`
 	Status      string `json:"status"` // active, inactive
-	isVerified  bool   `json:"is_verified"`
-	
+	IsVerified  bool   `json:"is_verified"`
+	FailedAttempts int `json:"failed_attempts"`
+    LockedUntil    *time.Time `json:"locked_until"`
+	KYCStatus string `json:"kyc_status"` // pending, verified, rejected
+	Tier uint `json:"tier"` // 1,2,3
 
 }
 
 type EmailVerification struct {
 	gorm.Model
-	Email      string
+	Email      string  
 	FullName   string
 	Password   string
 	OTP        string
+    OTPRequestCount int
+    FirstOTPRequestAt time.Time
 	ExpiresAt  time.Time
 }

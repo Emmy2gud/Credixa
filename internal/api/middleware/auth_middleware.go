@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	"time"
+
 	"net/http"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 
+	"payme/internal/application/user"
+	"payme/internal/config"
 	"payme/pkg/utils"
 )
 
@@ -33,19 +37,32 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		claims := token.Claims.(jwt.MapClaims)
+		userID := claims["user_id"]
+		var u user.User
+			if err := config.DB.WithContext(r.Context()).First(&u, "id = ?", userID).Error; err != nil {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+		if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
+			http.Error(w, "Account is locked", http.StatusForbidden)
+			return
+		}
 		//request.
 		//context.WithValue → creates a new copy of the context with a key-value pair.
 		//"user_id" → the key
 		//claims["user_id"] → the value
-		claims := token.Claims.(jwt.MapClaims)
+	
 		ctx := context.WithValue(r.Context(), "user_id", claims["user_id"])
 		fmt.Println(ctx)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-//Adminmiddleware 
-func Adminmiddleware(next http.Handler)http.Handler{
-return  http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+// Adminmiddleware
+func Adminmiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract token from Authorization header
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
@@ -70,11 +87,9 @@ return  http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
-
 func GetUserID(r *http.Request) (uint, bool) {
 	idValue := r.Context().Value("user_id")
-	
+
 	if idValue == nil {
 		return 0, false
 	}
@@ -84,7 +99,6 @@ func GetUserID(r *http.Request) (uint, bool) {
 	if !ok {
 		return 0, false
 	}
-// fmt.Printf("value=%v, type=%T\n", idValue, idValue)
+	// fmt.Printf("value=%v, type=%T\n", idValue, idValue)
 	return uint(idFloat), true
 }
-

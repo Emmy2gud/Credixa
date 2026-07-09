@@ -7,7 +7,9 @@ import (
 	"payme/internal/application/bill_payments"
 	"payme/internal/application/bill_payments/services"
 	"payme/internal/application/notifications"
+	"payme/internal/application/savings"
 	"payme/internal/application/splits"
+	"payme/internal/application/tiers"
 	"payme/internal/application/transaction"
 
 	"payme/internal/application/transfer"
@@ -45,6 +47,17 @@ func SetupRoutes(router *mux.Router) {
 
 	splitSvc := splits.NewSplitService(config.DB)
 	splitController := splits.NewSplitController(splitSvc)
+
+	tiersSvc := tiers.NewTierService(config.DB)
+	tiersController := tiers.NewTierHandler(tiersSvc)
+
+
+    //kyc tier verification 
+	Tiers := router.PathPrefix("/kyc").Subrouter()
+	Tiers.Use(middleware.AuthMiddleware)
+	Tiers.HandleFunc("/upload/tier2", tiersController.Tier2KycUpload).Methods("POST")
+	router.HandleFunc("/kyc/callback", tiersController.BVNCallback).Methods("GET")
+	Tiers.HandleFunc("/upload/tier3", tiersController.Tier3KycUpload).Methods("POST")
 
 	router.HandleFunc("/webhooks/flutterwave", webhookController.FlutterwaveWebhook).Methods("POST")
 	UserWallet := router.PathPrefix("/wallet").Subrouter()
@@ -103,6 +116,11 @@ func SetupRoutes(router *mux.Router) {
 	Splits.HandleFunc("/{id}/accept", splitController.AcceptSplitBill).Methods("PUT")   // PUT    /splits/{id}/accept
 	Splits.HandleFunc("/{id}/decline", splitController.DeclineSplitBill).Methods("PUT") // PUT    /splits/{id}/decline
 
+	// ── Savings routes ─────────────────────────────────────────────────────────
+	Savings := router.PathPrefix("/savings").Subrouter()
+	Savings.Use(middleware.AuthMiddleware)
+	Savings.HandleFunc("/enable-autosave/{savingsid}", savings.CreateSavingGoal).Methods("POST")
+
 	// ── Notification routes ────────────────────────────────────────────────────
 	Notifications := router.PathPrefix("/notifications").Subrouter()
 	Notifications.Use(middleware.AuthMiddleware)
@@ -115,6 +133,7 @@ func SetupRoutes(router *mux.Router) {
 	router.HandleFunc("/dev/seed/users", auth.SeedFakeUsers).Methods("POST")
 	router.HandleFunc("/login", authHandler.Login).Methods("POST")
 	router.HandleFunc("/register", authHandler.Register).Methods("POST")
+	router.HandleFunc("/verify-email",authHandler.VerifyEmail).Methods("POST")
 	router.HandleFunc("/logout", auth.Logout).Methods("POST")
 	//reset password
 	router.HandleFunc("/forgot-password", authHandler.ForgotPassword).Methods("POST")
