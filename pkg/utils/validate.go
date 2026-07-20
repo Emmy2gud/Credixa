@@ -48,3 +48,18 @@ func validatePassword(password string) (bool, string) {
 	}
 	return false, "Password must be at least 8 characters long, include uppercase, lowercase, number, and special character"
 }
+
+
+func ValidateImageFile(fileType string) (string, error) {
+	switch fileType {
+	case "image/png":
+		return ".png", nil
+	case "image/jpeg":
+		return ".jpg", nil
+	// case "video/mp4":
+	// 	return ".mp4", nil
+	default:
+		return "", errors.New("invalid file type")
+	}
+
+}

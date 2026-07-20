@@ -11,6 +11,7 @@ import (
 	"payme/internal/application/splits"
 	"payme/internal/application/tiers"
 	"payme/internal/application/transaction"
+	"payme/internal/application/user"
 
 	"payme/internal/application/transfer"
 	"payme/internal/application/webhooks"
@@ -50,9 +51,15 @@ func SetupRoutes(router *mux.Router) {
 
 	tiersSvc := tiers.NewTierService(config.DB)
 	tiersController := tiers.NewTierHandler(tiersSvc)
+	userSvc := user.NewUserService(config.DB)
+	userController := user.NewUserHandler(userSvc)
 
+	//User Profile
+	User := router.PathPrefix("/user").Subrouter()
+	User.Use(middleware.AuthMiddleware)
+	User.HandleFunc("/profile", userController.UpdateUserProfile).Methods("PUT")
 
-    //kyc tier verification 
+	//kyc tier verification
 	Tiers := router.PathPrefix("/kyc").Subrouter()
 	Tiers.Use(middleware.AuthMiddleware)
 	Tiers.HandleFunc("/upload/tier2", tiersController.Tier2KycUpload).Methods("POST")
@@ -73,9 +80,11 @@ func SetupRoutes(router *mux.Router) {
 	pinHandler := transactionpin.NewTransactionPinController(pinSvc)
 	TransactionPin := router.PathPrefix("/transaction-pin").Subrouter()
 	TransactionPin.Use(middleware.AuthMiddleware)
-	TransactionPin.HandleFunc("/create/{userid}", pinHandler.CreateTransactionPin).Methods("POST")
+	TransactionPin.HandleFunc("/create", pinHandler.CreateTransactionPin).Methods("POST")
 	// TransactionPin.HandleFunc("/verify/{userid}", pinHandler.VerifyTransactionPin).Methods("POST")
-	// TransactionPin.HandleFunc("/update/{userid}", transactionpin.UpdateTransactionPin).Methods("PUT")
+	TransactionPin.HandleFunc("/update-pin", pinHandler.UpdateTransactionPin).Methods("PUT")
+	TransactionPin.HandleFunc("/forgot-pin", pinHandler.ForgotTransactionPin).Methods("POST")
+	TransactionPin.HandleFunc("/reset-pin", pinHandler.ResetTransactionPin).Methods("PUT")
 	// TransactionPin.HandleFunc("/delete/{userid}", transactionpin.DeleteTransactionPin).Methods("DELETE")
 
 	//subscription routes for data,airtime,dstv,gotv,startimes,spectranet,smile,swift,electricity
@@ -133,7 +142,7 @@ func SetupRoutes(router *mux.Router) {
 	router.HandleFunc("/dev/seed/users", auth.SeedFakeUsers).Methods("POST")
 	router.HandleFunc("/login", authHandler.Login).Methods("POST")
 	router.HandleFunc("/register", authHandler.Register).Methods("POST")
-	router.HandleFunc("/verify-email",authHandler.VerifyEmail).Methods("POST")
+	router.HandleFunc("/verify-email", authHandler.VerifyEmail).Methods("POST")
 	router.HandleFunc("/logout", auth.Logout).Methods("POST")
 	//reset password
 	router.HandleFunc("/forgot-password", authHandler.ForgotPassword).Methods("POST")

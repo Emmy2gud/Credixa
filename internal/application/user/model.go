@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+type OTPPurpose string
+
+const (
+	PurposeSignup      OTPPurpose = "signup"
+	PurposePinReset    OTPPurpose = "pin_reset"
+	PurposePasswordReset OTPPurpose = "password_reset"
+)
+
 // User represents a customer user in the system
 type User struct {
 	gorm.Model
@@ -28,13 +36,16 @@ type User struct {
 
 }
 
-type EmailVerification struct {
+
+//this is temporary
+type OtpVerification struct {
 	gorm.Model
-	Email      string  
-	FullName   string
-	Password   string
-	OTP        string
-    OTPRequestCount int
-    FirstOTPRequestAt time.Time
-	ExpiresAt  time.Time
+	Email      string  `gorm:"unique" json:"email"`
+	FullName   string `json:"full_name"`
+	Password   string `json:"password"` //password or pin
+	Purpose    OTPPurpose `json:"purpose"`
+	OTP        string `json:"otp"` //hashed otp 
+    OTPRequestCount int `json:"otp_request_count"`
+    FirstOTPRequestAt time.Time `json:"first_otp_request_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }

@@ -25,7 +25,7 @@ import (
 func main() {
 	godotenv.Load("../../.env")
 	config.Connect()
-	config.GetDB().AutoMigrate(&user.User{}, &wallet.Wallet{}, &savings.PersonalSaving{}, &savings.GroupSaving{}, &splits.SplitBill{}, &splits.SplitBillParticipants{}, &savings.PersonalSaving{}, &savings.GroupSaving{}, &savings.GroupMember{}, &savings.GroupContribution{}, &transactionpin.TransactionPin{}, &wallet.SavingsWallet{}, &accounts.VirtualAccount{}, &notifications.Notification{}, &transfer.Transfer{}, &billpaymentmodels.BillPayment{}, &token.CardToken{}, &pendingcard.PendingCard{}, &transaction.Transaction{})
+	config.GetDB().AutoMigrate(&user.User{}, &user.OtpVerification{}, &wallet.Wallet{}, &savings.PersonalSaving{}, &savings.GroupSaving{}, &splits.SplitBill{}, &splits.SplitBillParticipants{}, &savings.PersonalSaving{}, &savings.GroupSaving{}, &savings.GroupMember{}, &savings.GroupContribution{}, &transactionpin.TransactionPin{}, &wallet.SavingsWallet{}, &accounts.VirtualAccount{}, &notifications.Notification{}, &transfer.Transfer{}, &billpaymentmodels.BillPayment{}, &token.CardToken{}, &pendingcard.PendingCard{}, &transaction.Transaction{})
 	
 	// Initialize auto-save cron scheduler
 	savings.InitAutoSaveScheduler()

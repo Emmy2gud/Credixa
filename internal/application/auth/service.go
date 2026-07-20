@@ -54,9 +54,10 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 	now := time.Now()
 
 	// --- RATE LIMIT CHECK ---
-	var verification user.EmailVerification
-	err = s.db.WithContext(ctx).Where("email = ?", req.Email).First(&verification).Error
+	var verification user.OtpVerification
+	err = s.db.WithContext(ctx).Where("email = ? AND purpose = ?", req.Email, user.PurposeSignup).First(&verification).Error
 
+	//if there is an emailverification record for the user
 	if err == nil {
 
 		if now.Sub(verification.FirstOTPRequestAt) < time.Hour {
@@ -83,10 +84,11 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 		}
 	} else {
 		// No record yet — first request ever for this email
-		verification = user.EmailVerification{
+		verification = user.OtpVerification{
 			Email:             req.Email,
 			FullName:          req.FullName,
 			Password:          hashedPassword,
+			Purpose:           user.PurposeSignup,
 			OTP:               utils.GenerateOTP(),
 			ExpiresAt:         now.Add(5 * time.Minute),
 			OTPRequestCount:   1,
@@ -106,9 +108,9 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 }
 func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (dto.SignUpResponse, error) {
 
-	var verification user.EmailVerification
+	var verification user.OtpVerification
 
-	err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&verification).Error
+	err := s.db.WithContext(ctx).Where("email = ? AND purpose = ?", req.Email, user.PurposeSignup).First(&verification).Error
 
 	if err != nil {
 		return dto.SignUpResponse{},
@@ -148,22 +150,11 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 	if err := s.db.Create(&wallet).Error; err != nil {
 		return dto.SignUpResponse{}, err
 	}
-
-	// token, err := utils.GenerateToken(
-	// 	user.ID,
-	// 	user.Role,
-	// )
-
-	if err != nil {
-		return dto.SignUpResponse{}, err
-	}
-
 	s.db.Delete(&verification)
 
 	return dto.SignUpResponse{
 		Message: "Account verified",
 		UserID:  user.ID,
-		// Token:   token,
 		FullName: user.FullName,
 		Email:  user.Email,
 	}, nil
