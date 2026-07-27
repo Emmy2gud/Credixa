@@ -15,9 +15,6 @@ type Notification struct {
 	Status    string    `json:"status"`// unread, read
 	Type    string    `json:"type"`//splits,bills-payment,wallet-fund,transfers
 
-	
-
-	
 }
 
 func (n *Notification) CreateNotification() (*Notification, error) {

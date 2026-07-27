@@ -10,8 +10,23 @@ import (
 
 	"gorm.io/gorm"
 )
-func HandleTransfer(payload map[string]interface{}, w http.ResponseWriter, source map[string]interface{},db *gorm.DB) {
-   var transfer transfer.Transfer
+type WebhookTransferService interface {
+	
+	HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{})
+}
+type webHookTransferService struct {
+	db *gorm.DB
+}
+
+func NewWebhookTransferService() WebhookTransferService {
+	return &webHookTransferService{
+		db: config.DB,
+	}
+}
+
+func(wh *webHookTransferService) HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{}) {
+	
+	var transfer transfer.Transfer
 	txRef, ok := source["tx_ref"].(string)
 	if !ok {
 		txRef, _ = source["txRef"].(string)
@@ -34,32 +49,39 @@ func HandleTransfer(payload map[string]interface{}, w http.ResponseWriter, sourc
 
 	switch status {
 	case "successful":
-	
-		if err := config.DB.Model(&transaction.Transaction{}).
+  	err := wh.db.Transaction(func(tx *gorm.DB) error {
+		if err := wh.db.Model(&transaction.Transaction{}).
 			Where("reference = ?", txRef).
 			Update("status", "completed").Error; err != nil {
-				http.Error(w, "failed to update transaction", http.StatusInternalServerError)
-				return
-			}
-		db.Model(&transfer).
+			
+			return fmt.Errorf("failed to update transaction")
+		}
+		wh.db.Model(&transfer).
 			Where("reference = ?", txRef).
 			Update("status", "completed")
 
 		fmt.Printf(" Transfer completed for ref: %s\n", txRef)
-
+		return nil
+	})
+	if err != nil {
+		http.Error(w, "failed to update transaction", http.StatusInternalServerError)
+		return
+	}	
 	case "failed":
-	
-		if err := wallet.UpdateWalletBalance(uint(t.UserID), t.Amount); err != nil {
-			http.Error(w, "failed to refund wallet", http.StatusInternalServerError)
-			return
+ 	err := wh.db.Transaction(func(tx *gorm.DB) error {
+		if err := wallet.UpdateWalletBalance(tx,t.WalletID, 0, t.Amount, txRef, "transfer", "Debit", "failed", "transfer"); err != nil {
+			return fmt.Errorf("failed to refund wallet")
 		}
-		db.Model(&transaction.Transaction{}).
-			Where("reference = ?", txRef).
-			Update("status", "failed")
-		db.Model(&transfer).
-			Where("reference = ?", txRef).
-			Update("status", "failed")
 
+		wh.db.Model(&transfer).
+			Where("reference = ?", txRef).
+			Update("status", "failed")
+		return nil
+	})
+	if err != nil {
+		http.Error(w, "failed to update transaction", http.StatusInternalServerError)
+		return
+	}
 		fmt.Printf(" Transfer failed, wallet refunded for ref: %s\n", txRef)
 
 	default:

@@ -36,8 +36,10 @@ func CreateSavingGoal(w http.ResponseWriter, r *http.Request) {
 	s.AutoSave = true
 	s.AutoSaveFrequency = req.AutoSaveFrequency
 	s.AutoSaveAmount = req.AutoSaveAmount
-	config.DB.Create(&s)
+	if err := config.DB.Create(&s).Error; err != nil {
+		http.Error(w, "Failed to create saving goal: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 }
-

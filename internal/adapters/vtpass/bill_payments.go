@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"os"
 
@@ -43,6 +44,7 @@ func (c *Client) CreateBillPayment(ctx context.Context,payload interface{}) ([]b
 
 	body, err := json.Marshal(payload)
 	if err != nil {
+		log.Printf("Failed to marshal payload: %v", err)
 		return nil, fmt.Errorf("failed to marshal vtpass payload: %w", err)
 	}
 	_ = body // httpx.DoRequest accepts the struct directly in your current setup

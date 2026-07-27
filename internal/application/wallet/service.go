@@ -1,7 +1,6 @@
 package wallet
 
 import (
-
 	"context"
 	"encoding/json"
 	"fmt"
@@ -45,8 +44,8 @@ type FlwVerifyResponse struct {
 type WalletService interface {
 	InitiateCardWalletFunding(ctx context.Context, req dto.ChargeRequest, userID uint) (string, dto.InitializeCardResponse, error)
 	AuthorizeCardFundingService(ctx context.Context, txRef string, pin string) (dto.AuthorizeCardResponse, error)
-	 ValidateCardCharge(ctx context.Context, ref, otp string) (dto.ValidateCardResponse, error)
-	 VerifyCard(ctx context.Context, id string, userID uint) (dto.VerifyChargeResponse, error)
+	ValidateCardCharge(ctx context.Context, ref, otp string) (dto.ValidateCardResponse, error)
+	VerifyCard(ctx context.Context, id string, userID uint) (dto.VerifyChargeResponse, error)
 }
 
 type walletService struct {
@@ -69,7 +68,7 @@ func (s *walletService) InitiateCardWalletFunding(ctx context.Context, req dto.C
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", dto.InitializeCardResponse{}, fmt.Errorf("failed to marshal card request: %v", err)
-	}	
+	}
 
 	// Save the raw payload to DB keyed by tx_ref.
 	// Step 2 will look this up using tx_ref.
@@ -119,23 +118,19 @@ func (s *walletService) InitiateCardWalletFunding(ctx context.Context, req dto.C
 		return "", dto.InitializeCardResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
 	}
 
-
-	
-
 	// Return tx_ref alongside Flutterwave response.
 	// Controller will include tx_ref in the API response so the client can use it in step 2.
 	return req.TxRef, dto.InitializeCardResponse{
-	
-			Mode:     flwResp.Meta.Authorization.Mode,
-		 Fields: flwResp.Meta.Authorization.Fields,
 
-		
+		Mode:   flwResp.Meta.Authorization.Mode,
+		Fields: flwResp.Meta.Authorization.Fields,
 	}, nil
 }
+
 // AuthorizeCardCharge re-sends the full card payload WITH the PIN added inside,
 // then re-encrypts and posts to the same /v3/charges?type=card endpoint.
 // This is exactly how Flutterwave PIN mode works.
-func (s *walletService) authorizeCardCharge(ctx context.Context, pin string, chargeRequest dto.ChargeRequest) ( dto.AuthorizeCardResponse, error) {
+func (s *walletService) authorizeCardCharge(ctx context.Context, pin string, chargeRequest dto.ChargeRequest) (dto.AuthorizeCardResponse, error) {
 	type AuthorizeInfo struct {
 		dto.ChargeRequest
 		Authorization map[string]string `json:"authorization"`
@@ -145,42 +140,38 @@ func (s *walletService) authorizeCardCharge(ctx context.Context, pin string, cha
 	info := AuthorizeInfo{
 		ChargeRequest: chargeRequest,
 		Authorization: map[string]string{
-			"mode": "pin",
-			"pin":  pin,
-			"city": chargeRequest.City,
+			"mode":    "pin",
+			"pin":     pin,
+			"city":    chargeRequest.City,
 			"address": chargeRequest.Address,
-			"state": chargeRequest.State,
-			"zip": chargeRequest.Zip,
+			"state":   chargeRequest.State,
+			"zip":     chargeRequest.Zip,
 		},
 	}
 
 	body, err := json.Marshal(info)
 	if err != nil {
-		return  dto.AuthorizeCardResponse{}, fmt.Errorf("failed to marshal card request: %v", err)
+		return dto.AuthorizeCardResponse{}, fmt.Errorf("failed to marshal card request: %v", err)
 	}
 
 	// Encrypt the full payload (same as step 1, but now includes authorization)
 	encryptedData, err := utils.Encryption3des(string(body))
 	if err != nil {
-		return  dto.AuthorizeCardResponse{}, fmt.Errorf("encryption failed: %v", err)
+		return dto.AuthorizeCardResponse{}, fmt.Errorf("encryption failed: %v", err)
 	}
 
 	flwPayload, _ := json.Marshal(map[string]string{"client": encryptedData})
-	
+
 	flwResp, err := adapters.NewClient().AuthorizeCardFunding(ctx, flwPayload)
 	if err != nil {
-		return  dto.AuthorizeCardResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
+		return dto.AuthorizeCardResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
 	}
 
-
 	fmt.Println(flwResp)
-	return  dto.AuthorizeCardResponse{
-	
-			Mode:     flwResp.Meta.Authorization.Mode,
-			Endpoint: flwResp.Meta.Authorization.Endpoint,
-		
+	return dto.AuthorizeCardResponse{
 
-		
+		Mode:     flwResp.Meta.Authorization.Mode,
+		Endpoint: flwResp.Meta.Authorization.Endpoint,
 	}, nil
 }
 
@@ -212,37 +203,35 @@ func (s *walletService) AuthorizeCardFundingService(ctx context.Context, txRef s
 }
 
 func (s *walletService) ValidateCardCharge(ctx context.Context, ref, otp string) (dto.ValidateCardResponse, error) {
-	
+
 	validatePayload := dto.ValidateCardRequest{
-		Otp: otp,
+		Otp:    otp,
 		FlwRef: ref,
 	}
 
 	flwResp, err := adapters.NewClient().ValidateCardWalletFunding(ctx, validatePayload)
 	if err != nil {
-		return  dto.ValidateCardResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
+		return dto.ValidateCardResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
 	}
 
 	return dto.ValidateCardResponse{
-		Status: flwResp.Status,
-		Amount: flwResp.Data.Amount,
+		Status:       flwResp.Status,
+		Amount:       flwResp.Data.Amount,
 		First6Digits: flwResp.Data.Card.First6Digits,
-		Last4Digits: flwResp.Data.Card.Last4Digits,
-		Issuer: flwResp.Data.Card.Issuer,
-		Country: flwResp.Data.Card.Country,
-		Type: flwResp.Data.Card.Type,
-		Expiry: flwResp.Data.Card.Expiry,
+		Last4Digits:  flwResp.Data.Card.Last4Digits,
+		Issuer:       flwResp.Data.Card.Issuer,
+		Country:      flwResp.Data.Card.Country,
+		Type:         flwResp.Data.Card.Type,
+		Expiry:       flwResp.Data.Card.Expiry,
 	}, nil
 }
 
-func (s *walletService) VerifyCard(ctx context.Context, id string, userID uint) (dto.VerifyChargeResponse , error) {
+func (s *walletService) VerifyCard(ctx context.Context, id string, userID uint) (dto.VerifyChargeResponse, error) {
 
-   flwResp, err := adapters.NewClient().VerifyCardWalletFunding(ctx,id)
+	flwResp, err := adapters.NewClient().VerifyCardWalletFunding(ctx, id)
 	if err != nil {
-		return  dto.VerifyChargeResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
+		return dto.VerifyChargeResponse{}, fmt.Errorf("failed to initiate card wallet funding: %v", err)
 	}
-
-
 
 	if flwResp.Status == "success" && flwResp.Data.Status == "successful" {
 		// Store the card in the database
@@ -263,17 +252,15 @@ func (s *walletService) VerifyCard(ctx context.Context, id string, userID uint) 
 		}
 	}
 
-	
 	return dto.VerifyChargeResponse{
-		Status: flwResp.Status,
-		Amount: flwResp.Data.Amount,
+		Status:       flwResp.Status,
+		Amount:       flwResp.Data.Amount,
 		First6Digits: flwResp.Data.Card.First6Digits,
-		Last4Digits: flwResp.Data.Card.Last4Digits,
-		Issuer: flwResp.Data.Card.Issuer,
-		Country: flwResp.Data.Card.Country,
-		Type: flwResp.Data.Card.Type,
-		Expiry: flwResp.Data.Card.Expiry,
-
+		Last4Digits:  flwResp.Data.Card.Last4Digits,
+		Issuer:       flwResp.Data.Card.Issuer,
+		Country:      flwResp.Data.Card.Country,
+		Type:         flwResp.Data.Card.Type,
+		Expiry:       flwResp.Data.Card.Expiry,
 	}, nil
 }
 
@@ -286,57 +273,178 @@ func GetWallet(userID uint) (Wallet, error) {
 	return w, nil
 }
 
-func UpdateWalletBalance(userID uint, amount int64) error {
+func UpdateWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
+
 	var wallet Wallet
 
-	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", userID, err)
+	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
 	}
 	newBalance := wallet.Balance + int64(amount)
 	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
 	}
-
+	//wallet ledger entry
+	walletLedger := WalletLedger{
+		WalletID:      wallet.ID,
+		UserID:        wallet.UserID,
+		TransactionID: wallet.ID,
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  newBalance,
+		Description:   description,
+		Status:        status,
+		EntryType:    entrytype,
+	}
+	if err := config.DB.Create(&walletLedger).Error; err != nil {
+		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
+	}
+    //creating transaction entry
+	tx:=transaction.Transaction{
+		UserID: wallet.UserID,
+		WalletID: wallet.ID,
+		Type: entrytype,
+		Category: category,
+		Amount: amount,
+		Fee: fee,
+		Reference: ref,
+		Status: status,
+		Description: description,
+	}
+	if err := config.DB.Create(&tx).Error; err != nil {
+		return fmt.Errorf("failed to create transaction entry: %v", err)
+	}
+	
 	return nil
 }
 
-func DeductWalletBalance(userID uint, amount int64) error {
+func DeductWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
 	var wallet Wallet
 
-	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", userID, err)
+	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
 	}
 	newBalance := wallet.Balance - int64(amount)
 	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
 	}
-
+	//wallet ledger entry
+	walletLedger := WalletLedger{
+		WalletID:      wallet.ID,
+		UserID:        wallet.UserID,
+		TransactionID: wallet.ID,
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  newBalance,
+		Description:   description,
+		Status:        status,
+		EntryType:    entrytype,
+	}
+	if err := config.DB.Create(&walletLedger).Error; err != nil {
+		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
+	}
+    //creating transaction entry
+	tx:=transaction.Transaction{
+		UserID: wallet.UserID,
+		WalletID: wallet.ID,
+		Type: entrytype,
+		Category: category,
+		Amount: amount,
+		Fee: fee,
+		Reference: ref,
+		Status: status,
+		Description: description,
+	}
+	if err := config.DB.Create(&tx).Error; err != nil {
+		return fmt.Errorf("failed to create transaction entry: %v", err)
+	}
+	
 	return nil
 }
 
-func UpdateSavingsWalletBalance(userID uint, amount int64) error {
+func UpdateSavingsWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
 	var wallet SavingsWallet
 
-	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", userID, err)
+	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
 	}
 	newBalance := wallet.Balance + int64(amount)
 	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
 	}
+	//wallet ledger entry
+	walletLedger := WalletLedger{
+		WalletID:      wallet.ID,
+		UserID:        wallet.UserID,
+		TransactionID: wallet.ID,
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  newBalance,
+		Description:   description,
+		Status:        status,
+		EntryType:    entrytype,
+	}
+	if err := config.DB.Create(&walletLedger).Error; err != nil {
+		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
+	}
+    //creating transaction entry
+	tx:=transaction.Transaction{
+		UserID: wallet.UserID,
+		WalletID: wallet.ID,
+		Type: entrytype,
+		Category: category,
+		Amount: amount,
+		Fee: fee,
+		Reference: ref,
+		Status: status,
+		Description: description,
+	}
+	if err := config.DB.Create(&tx).Error; err != nil {
+		return fmt.Errorf("failed to create transaction entry: %v", err)
+	}
 
 	return nil
 }
 
-func DeductSavingsWalletBalance(userID uint, amount int64) error {
+func DeductSavingsWalletBalance(db *gorm.DB,walletID uint,fee,amount int64,ref,description,entrytype,status,category string) error {
 	var wallet SavingsWallet
 
-	if err := config.DB.Where("user_id = ?", userID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", userID, err)
+	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
 	}
 	newBalance := wallet.Balance - int64(amount)
 	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
+	}
+	//wallet ledger entry
+	walletLedger := WalletLedger{
+		WalletID:      wallet.ID,
+		UserID:        wallet.UserID,
+		TransactionID: wallet.ID,
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  newBalance,
+		Description:   description,
+		Status:        status,
+		EntryType:    entrytype,
+	}
+	if err := config.DB.Create(&walletLedger).Error; err != nil {
+		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
+	}
+    //creating transaction entry
+	tx:=transaction.Transaction{
+		UserID: wallet.UserID,
+		WalletID: wallet.ID,
+		Type: entrytype,
+		Category: category,
+		Amount: amount,
+		Fee: fee,
+		Reference: ref,
+		Status: status,
+		Description: description,
+	}
+	if err := config.DB.Create(&tx).Error; err != nil {
+		return fmt.Errorf("failed to create transaction entry: %v", err)
 	}
 
 	return nil

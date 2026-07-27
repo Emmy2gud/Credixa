@@ -2,11 +2,13 @@ package accounts
 
 import (
 	"context"
+	"log"
 
 	"fmt"
 
 	"payme/internal/adapters/flutterwave"
 	"payme/internal/application/accounts/dto"
+	"payme/internal/application/notifications"
 	"payme/internal/application/wallet"
 
 	"gorm.io/gorm"
@@ -18,11 +20,13 @@ type VirtualAccountService interface {
 
 type virtualAccountService struct {
 	db *gorm.DB
+	notificationService notifications.NotificationService
 }
 
 func NewVirtualAccountService(db *gorm.DB) VirtualAccountService {
 	return &virtualAccountService{
 		db: db,
+		notificationService: notifications.NewNotificationService(db),
 	}
 }
 
@@ -31,10 +35,11 @@ func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context, req dt
 	var w wallet.Wallet
 
 	if err := s.db.WithContext(ctx).Where("user_id = ?", req.UserID).First(&w).Error; err != nil {
+		log.Printf("wallet not found: %v", err)
 		return dto.VirtualAccountResponse{},
 			fmt.Errorf("wallet not found: %w", err)
 	}
-   
+	
 	flwResp, err := adapters.NewClient().CreateVirtualAccount(ctx, req)
 
 	if err != nil {
@@ -42,6 +47,7 @@ func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context, req dt
 	}
 
 	if flwResp.Data.ResponseCode != "02" {
+		log.Printf("Flutterwave error: %s", flwResp.Data.ResponseMessage)
 		return dto.VirtualAccountResponse{},
 			fmt.Errorf(
 				"flutterwave error: %s",
@@ -64,6 +70,7 @@ func (s *virtualAccountService) CreateVirtualAccount(ctx context.Context, req dt
 		return dto.VirtualAccountResponse{}, err
 	}
 
+	s.notificationService.CreateNotification(ctx, req.UserID, "Virtual Account Created", "wallet-fund", "Virtual Account Created", "")
 	return dto.VirtualAccountResponse{
 		ResponseCode:    flwResp.Data.ResponseCode,
 		ResponseMessage: flwResp.Data.ResponseMessage,

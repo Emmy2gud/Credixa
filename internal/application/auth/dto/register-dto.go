@@ -7,6 +7,7 @@ type SignUpRequest struct {
 	PhoneNumber string `json:"phone_number" binding:"required"`
     FullName string `json:"full_name" binding:"required"`
     Role     string `json:"role"`
+    Token  string `json:"token"`
 }
 
 type SignUpResponse struct {

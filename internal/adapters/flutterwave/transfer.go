@@ -42,3 +42,30 @@ func (c *Client) CreateTransfers(ctx context.Context,req dto.CreateTransferReque
 
 	return &resp, nil
 }
+
+func(c *Client) ResolveAccountDetails(ctx context.Context, req dto.ResolveBankDetailsRequest) (*ResolveAccountDetailsResponse, error) {
+	
+	flwReq := ResolveAccountDetailsRequest{
+		AccountNumber: req.AccountNumber,
+		AccountBank:   req.AccountBank,
+	}
+
+	respBody, err := c.httpClient.DoRequest(
+		ctx,
+		"POST",
+		"/v3/accounts/resolve",
+		&flwReq,
+		nil,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ResolveAccountDetailsResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}

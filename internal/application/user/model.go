@@ -33,6 +33,7 @@ type User struct {
     LockedUntil    *time.Time `json:"locked_until"`
 	KYCStatus string `json:"kyc_status"` // pending, verified, rejected
 	Tier uint `json:"tier"` // 1,2,3
+	Token string `json:"token"`
 
 }
 
@@ -42,6 +43,7 @@ type OtpVerification struct {
 	gorm.Model
 	Email      string  `gorm:"unique" json:"email"`
 	FullName   string `json:"full_name"`
+	Token      string `json:"token"`
 	Password   string `json:"password"` //password or pin
 	Purpose    OTPPurpose `json:"purpose"`
 	OTP        string `json:"otp"` //hashed otp 

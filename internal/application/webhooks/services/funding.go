@@ -3,14 +3,28 @@ package services
 import (
 	"fmt"
 	"net/http"
-	"payme/internal/config"
 	"payme/internal/application/transaction"
 	"payme/internal/application/wallet"
+	"payme/internal/config"
 	"strconv"
+
+	"gorm.io/gorm"
 )
+type WebhookFundingService interface {
+	
+	HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{})
+}
+type webHookFundingService struct {
+	db *gorm.DB
+}
 
-func HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{}) {
-
+func NewWebhookFundingService() WebhookFundingService {
+	return &webHookFundingService{
+		db: config.DB,
+	}
+}
+func(wh *webHookFundingService) HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *http.Request, source map[string]interface{}) {
+   
 	event, _ := payload["event"].(string)
 	if event == "" {
 		event, _ = payload["event.type"].(string)
@@ -64,7 +78,7 @@ func HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *htt
 
 	// 5. Credit wallet (IDEMPOTENT)
 	fmt.Printf("Crediting wallet for user %d with amount %d\n", session.UserID, session.Amount)
-	if err := wallet.UpdateWalletBalance(uint(session.UserID), session.Amount); err != nil {
+	if err := wallet.UpdateWalletBalance(wh.db,session.WalletID, 0, int64(amount), txRef, "transfer", "Credit", "success", "transfer"); err != nil {
 		fmt.Printf("Webhook Error: Failed to update wallet balance: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -72,7 +86,7 @@ func HandleFunding(payload map[string]interface{}, w http.ResponseWriter, r *htt
 
 	// 6. Mark as successful
 	session.Status = "successful"
-	if err := config.DB.Save(&session).Error; err != nil {
+	if err := wh.db.Save(&session).Error; err != nil {
 		fmt.Printf("Webhook Error: Failed to save transaction status: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return

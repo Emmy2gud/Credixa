@@ -237,15 +237,14 @@ func (s *billPaymentService) VerifySubscription(ctx context.Context, serviceID s
 }
 
 func (s *billPaymentService) processPayment(ctx context.Context, userID uint, p billPaymentParams) (*dto.BillPaymentResponse, error) {
-
+	var billPay models.BillPayment
 	// 1. Idempotency guard
 	if existing, err := s.idempotencyCheck(ctx, p.idempotencyKey); err != nil {
 		return nil, err
 	} else if existing != nil {
-	
+
 		return &dto.BillPaymentResponse{
 			Code: "000",
-			// Optionally populate from existing record if you store the response
 		}, nil
 	}
 
@@ -260,71 +259,59 @@ func (s *billPaymentService) processPayment(ctx context.Context, userID uint, p 
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate request ID: %w", err)
 	}
+	s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 4. Deduct wallet (optimistic — refund on failure)
+		if err := wallet.DeductWalletBalance(tx,w.ID, 0, p.amount, requestID, "bill payment", "bill_payment", "pending", "bill_payment"); err != nil {
+			return fmt.Errorf("insufficient balance or deduction failed: %w", err)
+		}
 
-	// 4. Deduct wallet (optimistic — refund on failure)
-	if err := wallet.DeductWalletBalance(userID, p.amount); err != nil {
-		return nil, fmt.Errorf("insufficient balance or deduction failed: %w", err)
-	}
+		// 5. Persist pending bill payment
+		billPay := models.BillPayment{
+			UserID:    userID,
+			WalletID:  w.ID,
+			BillType:  p.billType,
+			Provider:  p.variationCode,
+			Amount:    uint64(p.amount),
+			Reference: requestID,
+			Status:    "pending",
+		}
+		if err := s.db.WithContext(ctx).Create(&billPay).Error; err != nil {
+			wallet.UpdateWalletBalance(tx,w.ID, 0, p.amount, requestID, "bill payment", "bill_payment", "failed", "bill_payment")
+			return fmt.Errorf("failed to create bill payment record: %w", err)
+		}
+		return nil
+	})
 
-	// 5. Persist pending transaction
-	trans := transaction.Transaction{
-		Amount:    p.amount,
-		Reference: requestID,
-		Type:      "bill_payment",
-		Status:    "pending",
-		UserID:    userID,
-		WalletID:  w.ID,
-	}
-	if err := s.db.WithContext(ctx).Create(&trans).Error; err != nil {
-	
-		wallet.UpdateWalletBalance(userID, p.amount)
-		return nil, fmt.Errorf("failed to create transaction record: %w", err)
-	}
-
-	// 6. Persist pending bill payment
-	billPay := models.BillPayment{
-		UserID:    userID,
-		WalletID:  w.ID,
-		BillType:  p.billType,
-		Provider:  p.variationCode,
-		Amount:    uint64(p.amount),
-		Reference: requestID,
-		Status:    "pending",
-	}
-	if err := s.db.WithContext(ctx).Create(&billPay).Error; err != nil {
-		wallet.UpdateWalletBalance(userID, p.amount)
-		trans.Status = "failed"
-		s.db.WithContext(ctx).Save(&trans)
-		return nil, fmt.Errorf("failed to create bill payment record: %w", err)
-	}
-
-	// 7. Call VTPass
+	// 6. Call VTPass
 	respBody, err := adapters.NewClient().CreateBillPayment(ctx, p.vtpassPayload)
 	if err != nil {
-		wallet.UpdateWalletBalance(userID, p.amount)
-		trans.Status = "failed"
-		billPay.Status = "failed"
-		s.db.WithContext(ctx).Save(&trans)
-		s.db.WithContext(ctx).Save(&billPay)
+		defer s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			wallet.UpdateWalletBalance(tx,w.ID, 0, p.amount, requestID, "bill payment", "bill_payment", "failed", "bill_payment")
+			billPay.Status = "failed"
+			s.db.WithContext(ctx).Save(&billPay)
+			return nil
+		})
 		return nil, fmt.Errorf("vtpass request failed: %w", err)
 	}
 
-	// 8. Parse response
+	// 7. Parse response
 	var result dto.BillPaymentResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse vtpass response: %w", err)
 	}
 
-	// 9. Update records based on VTPass outcome
+	// 8. Update records based on VTPass outcome
 	if result.Content.Transactions.Status == "failed" || result.Code != "000" {
-		wallet.UpdateWalletBalance(userID, p.amount)
-		trans.Status = "failed"
-		billPay.Status = "failed"
+		defer s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			wallet.UpdateWalletBalance(tx,w.ID, 0, p.amount, requestID, "bill payment", "bill_payment", "failed", "bill_payment")
+			billPay.Status = "failed"
+			s.db.WithContext(ctx).Save(&billPay)
+			return nil
+		})
 	} else {
-		trans.Status = "success"
 		billPay.Status = "success"
+		s.db.WithContext(ctx).Save(&billPay)
 	}
-	s.db.WithContext(ctx).Save(&trans)
 	s.db.WithContext(ctx).Save(&billPay)
 
 	return &result, nil

@@ -3,10 +3,13 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
+
 	"fmt"
 	"time"
 
 	"payme/internal/application/auth/dto"
+	"payme/internal/application/notifications"
 	"payme/internal/application/user"
 	"payme/internal/application/wallet"
 	"payme/internal/config"
@@ -27,15 +30,18 @@ type AuthService interface {
 
 type authService struct {
 	db *gorm.DB
+	notificationService notifications.NotificationService
 }
 
 func NewAuthService(db *gorm.DB) AuthService {
 	return &authService{
 		db: db,
+		notificationService: notifications.NewNotificationService(db),
 	}
 }
 
 func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.SignUpResponse, error) {
+     
 	// Check if user already exists
 	var existingUser user.User
 	if err := s.db.WithContext(ctx).Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
@@ -78,6 +84,7 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 		verification.ExpiresAt = now.Add(5 * time.Minute)
 		verification.FullName = req.FullName
 		verification.Password = hashedPassword
+		verification.Token = req.Token
 
 		if err := s.db.WithContext(ctx).Save(&verification).Error; err != nil {
 			return dto.SignUpResponse{}, errors.New("could not update verification")
@@ -93,6 +100,7 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 			ExpiresAt:         now.Add(5 * time.Minute),
 			OTPRequestCount:   1,
 			FirstOTPRequestAt: now,
+			Token: req.Token,
 		}
 		if err := s.db.WithContext(ctx).Create(&verification).Error; err != nil {
 			return dto.SignUpResponse{}, errors.New("could not create user")
@@ -107,10 +115,10 @@ func (s *authService) SignUp(ctx context.Context, req dto.SignUpRequest) (dto.Si
 
 }
 func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (dto.SignUpResponse, error) {
-
+	
 	var verification user.OtpVerification
 
-	err := s.db.WithContext(ctx).Where("email = ? AND purpose = ?", req.Email, user.PurposeSignup).First(&verification).Error
+	err := s.db.WithContext(ctx).Where("email = ? AND otp = ? AND purpose = ?", req.Email, req.OTP,user.PurposeSignup).First(&verification).Error
 
 	if err != nil {
 		return dto.SignUpResponse{},
@@ -131,6 +139,7 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 		Email:    verification.Email,
 		Password: verification.Password,
 		FullName: verification.FullName,
+		Token: verification.Token,
 		Role:     "users",
 		KYCStatus: "pending",
 		Tier:      1,
@@ -152,6 +161,7 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest) (
 	}
 	s.db.Delete(&verification)
 
+s.notificationService.CreateNotification(ctx, user.ID, "Account Creation", "account-creation", "Account Created successfully",verification.Token)
 	return dto.SignUpResponse{
 		Message: "Account verified",
 		UserID:  user.ID,
@@ -169,6 +179,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (dto.Logi
 	// --- CHECK IF ACCOUNT IS CURRENTLY LOCKED ---
 	if u.LockedUntil != nil && time.Now().Before(*u.LockedUntil) {
 		remaining := time.Until(*u.LockedUntil).Round(time.Second)
+		log.Printf("Account locked, try again in %s", remaining)
 		return dto.LoginResponse{}, fmt.Errorf("account locked, try again in %s", remaining)
 	}
 
@@ -243,7 +254,7 @@ func (s *authService) ResetPassword(ctx context.Context, req dto.ResetPasswordRe
 
 	// 3️⃣ Extract claims
 	claims := token.Claims.(jwt.MapClaims)
-	fmt.Println(claims)
+	log.Println(claims)
 
 	email, ok := claims["email"].(string)
 	if !ok {

@@ -192,3 +192,17 @@ type RetrieveBvnResponse struct {
 		CreatedAt string `json:"created_at"`
 	}
 }
+
+type ResolveAccountDetailsRequest struct {
+	AccountNumber string `json:"account_number"`
+	AccountBank   string `json:"account_bank"`
+}
+
+type ResolveAccountDetailsResponse struct {
+	Status string `json:"status"`
+	Message string `json:"message"`
+	Data struct {
+		AccountName string `json:"account_name"`
+		AccountNumber string `json:"account_number"`
+	} `json:"data"`
+}

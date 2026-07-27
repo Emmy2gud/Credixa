@@ -24,7 +24,7 @@ import (
 )
 
 func SetupRoutes(router *mux.Router) {
-
+    notificationSvc := notifications.NewNotificationService(config.DB)
 	webhookSvc := webhooks.NewWebhookService(config.DB)
 	webhookController := webhooks.NewWebhookController(webhookSvc)
 
@@ -40,7 +40,7 @@ func SetupRoutes(router *mux.Router) {
 	transactionSvc := transaction.NewTransactionService(config.DB)
 	transactionController := transaction.NewTransactionController(transactionSvc)
 
-	notificationSvc := notifications.NewNotificationService(config.DB)
+	
 	notificationController := notifications.NewNotificationController(notificationSvc)
 
 	billPaymentsSvc := services.NewBillPaymentService(config.DB)
@@ -80,7 +80,7 @@ func SetupRoutes(router *mux.Router) {
 	pinHandler := transactionpin.NewTransactionPinController(pinSvc)
 	TransactionPin := router.PathPrefix("/transaction-pin").Subrouter()
 	TransactionPin.Use(middleware.AuthMiddleware)
-	TransactionPin.HandleFunc("/create", pinHandler.CreateTransactionPin).Methods("POST")
+	TransactionPin.HandleFunc("/create-pin", pinHandler.CreateTransactionPin).Methods("POST")
 	// TransactionPin.HandleFunc("/verify/{userid}", pinHandler.VerifyTransactionPin).Methods("POST")
 	TransactionPin.HandleFunc("/update-pin", pinHandler.UpdateTransactionPin).Methods("PUT")
 	TransactionPin.HandleFunc("/forgot-pin", pinHandler.ForgotTransactionPin).Methods("POST")

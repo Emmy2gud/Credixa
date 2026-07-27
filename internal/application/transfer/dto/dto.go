@@ -32,3 +32,16 @@ type TransferResponse struct {
 		BankName string `json:"bank_name"`	
 
 }
+
+type ResolveBankDetailsRequest struct{
+	AccountNumber string `json:"account_number"`
+	AccountBank   string `json:"account_bank"`
+}
+
+type ResolveBankDetailsResponse struct{
+	Status string `json:"status"`
+	Message string `json:"message"`
+	AccountName string `json:"account_name"`
+	AccountNumber string `json:"account_number"`
+
+}

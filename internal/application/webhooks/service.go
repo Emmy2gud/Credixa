@@ -52,9 +52,9 @@ func (s *webhookService) ProcessFlutterwaveWebhook(ctx context.Context, w http.R
 	paymentType, _ := source["event.type"].(string)
 	switch paymentType {
 	case "CARD_TRANSACTION":
-		services.HandleFunding(payload, w, r, source)
+		services.NewWebhookFundingService().HandleFunding(payload, w, r, source)
 	case "bank_transfer":
-		services.HandleTransfer(payload, w, source,s.db)
+		services.NewWebhookTransferService().HandleFunding(payload, w, r, source)
 	case "ussd":
 		fmt.Println("ussd")
 	case "transfer":

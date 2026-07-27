@@ -2,10 +2,12 @@ package splits
 
 import (
 	"context"
+	"log"
 	"fmt"
 	"payme/internal/application/notifications"
 	"payme/internal/application/wallet"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -51,6 +53,7 @@ func (s *splitService) CreateSplitBill(ctx context.Context, input CreateSplitBil
 	}
 
 	if err := s.db.WithContext(ctx).Create(&splitbill).Error; err != nil {
+		log.Printf("failed to create split bill: %v", err)
 		return 0, fmt.Errorf("could not create split bill: %w", err)
 	}
 
@@ -71,6 +74,7 @@ func (s *splitService) CreateSplitBill(ctx context.Context, input CreateSplitBil
 		Status:      "accepted",
 	}
 	if err := s.db.WithContext(ctx).Create(&creatorParticipant).Error; err != nil {
+		log.Printf("failed to add creator as participant: %v", err)
 		return 0, fmt.Errorf("could not add creator as participant: %w", err)
 	}
 
@@ -87,6 +91,7 @@ func (s *splitService) CreateSplitBill(ctx context.Context, input CreateSplitBil
 			Status:      "pending",
 		}
 		if err := s.db.WithContext(ctx).Create(&invitedParticipant).Error; err != nil {
+			log.Printf("failed to add participant: %v", err)
 			fmt.Printf("Could not add participant %d: %v\n", participant.UserID, err)
 			continue
 		}
@@ -117,35 +122,47 @@ func (s *splitService) GetSplitBills(ctx context.Context, userID uint) ([]SplitB
 
 func (s *splitService) AcceptSplitBill(ctx context.Context, splitID uint64, userID uint) error {
 	var participant SplitBillParticipants
+	ref := "split_bill_" + uuid.New().String()
 	if err := s.db.WithContext(ctx).
 		Where("split_bill_id = ? AND user_id = ?", splitID, userID).
 		First(&participant).Error; err != nil {
+		log.Printf("participant record not found: %v", err)
 		return fmt.Errorf("participant record not found: %w", err)
 	}
 
 	participant.Status = "accepted"
 	if err := s.db.WithContext(ctx).Save(&participant).Error; err != nil {
+		log.Printf("failed to update participant status: %v", err)
 		return fmt.Errorf("could not update participant status: %w", err)
 	}
 
 	var splitBill SplitBill
 	if err := s.db.WithContext(ctx).Where("id = ?", splitID).First(&splitBill).Error; err != nil {
+		log.Printf("failed to load split bill: %v", err)
 		return fmt.Errorf("failed to load split bill: %w", err)
 	}
-
-	if err := wallet.DeductWalletBalance(uint(participant.UserID), participant.Amount); err != nil {
-		return fmt.Errorf("failed to deduct participant wallet balance: %w", err)
+	w, err := wallet.GetWallet(uint(participant.UserID))
+	if err != nil {
+		log.Printf("failed to load participant wallet: %v", err)
+		return fmt.Errorf("failed to load participant wallet: %w", err)
 	}
+	s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := wallet.DeductWalletBalance(tx,w.ID,0, participant.Amount,ref,"split_bill","Debit","success","split_bill"); err != nil {
+			log.Printf("failed to deduct participant wallet balance: %v", err)
+		}
 
-	if err := wallet.UpdateWalletBalance(uint(splitBill.CreatorID), participant.Amount); err != nil {
+		if err := wallet.UpdateWalletBalance(tx,w.ID,0, participant.Amount,ref,"split_bill","Credit","success","split_bill"); err != nil {
+			log.Printf("failed to credit creator wallet: %v", err)
 		return fmt.Errorf("failed to credit creator wallet: %w", err)
 	}
-
+	return nil
+	})
 	acceptMsg := fmt.Sprintf(
 		"A participant has accepted your split bill: \"%s\".",
 		splitBill.Title,
 	)
 	if _, err := notifications.CreateNotification(uint(splitBill.CreatorID), "SplitBill", "Split Bill Accepted", acceptMsg); err != nil {
+		log.Printf("failed to send acceptance notification: %v", err)
 		fmt.Printf("failed to send acceptance notification: %v\n", err)
 	}
 
@@ -157,16 +174,19 @@ func (s *splitService) DeclineSplitBill(ctx context.Context, splitID uint64, use
 	if err := s.db.WithContext(ctx).
 		Where("split_bill_id = ? AND user_id = ?", splitID, userID).
 		First(&participant).Error; err != nil {
+			log.Printf("participant record not found: %v", err)
 		return fmt.Errorf("participant record not found: %w", err)
 	}
 
 	participant.Status = "declined"
 	if err := s.db.WithContext(ctx).Save(&participant).Error; err != nil {
+		log.Printf("failed to update participant status: %v", err)
 		return fmt.Errorf("could not update participant status: %w", err)
 	}
 
 	var splitBill SplitBill
 	if err := s.db.WithContext(ctx).Where("id = ?", splitID).First(&splitBill).Error; err != nil {
+		log.Printf("failed to load split bill: %v", err)
 		return fmt.Errorf("failed to load split bill: %w", err)
 	}
 
@@ -175,6 +195,7 @@ func (s *splitService) DeclineSplitBill(ctx context.Context, splitID uint64, use
 		splitBill.Title,
 	)
 	if _, err := notifications.CreateNotification(uint(splitBill.CreatorID), "SplitBill", "Split Bill Declined", declineMsg); err != nil {
+		log.Printf("failed to send decline notification: %v", err)
 		fmt.Printf("failed to send decline notification: %v\n", err)
 	}
 

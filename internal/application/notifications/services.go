@@ -2,14 +2,18 @@ package notifications
 
 import (
 	"context"
+
 	"fmt"
+	adapters "payme/internal/adapters/expo-push"
+	"payme/internal/application/user"
+
 	"gorm.io/gorm"
 )
 
 type NotificationService interface {
 	GetNotifications(ctx context.Context, userID uint) ([]Notification, error)
 	MarkNotificationRead(ctx context.Context, notificationID uint, userID uint) (int64, error)
-	CreateNotification(ctx context.Context, userID uint, title, notificationType, message string) (Notification, error)
+	CreateNotification(ctx context.Context, userID uint, title, notificationType, message, token string) (Notification, error)
 }
 
 type notificationService struct {
@@ -45,7 +49,21 @@ func (s *notificationService) MarkNotificationRead(ctx context.Context, notifica
 	return result.RowsAffected, nil
 }
 
-func (s *notificationService) CreateNotification(ctx context.Context, userID uint, title, notificationType, message string) (Notification, error) {
+func (s *notificationService) CreateNotification(ctx context.Context, userID uint, title, notificationType, message, token string) (Notification, error) {
+	//   firstly read the user table
+	var u user.User
+	err:=s.db.WithContext(ctx).Where("id = ?", userID).First(&u)
+	if err!= nil {
+		return Notification{}, fmt.Errorf("user not found")
+	}
+    //secondly check if he token is valid in users table and match it with the one passed
+    if u.Token!="" || u.Token!=token {
+		err:=s.db.WithContext(ctx).Where("id = ?", userID).Update("token", token).Error
+		if err!= nil {
+			return Notification{}, fmt.Errorf("could not update user token")
+		}
+	}
+
 	notif := Notification{
 		UserID:  userID,
 		Title:   title,
@@ -57,11 +75,18 @@ func (s *notificationService) CreateNotification(ctx context.Context, userID uin
 	if err := s.db.WithContext(ctx).Create(&notif).Error; err != nil {
 		return notif, err
 	}
+	
+    if u.Token!=""{
+		err:=adapters.NewPushClient().SendPushNotification(u.Token, title, message, nil)
+		if err!= nil {
+			return Notification{}, fmt.Errorf("could not send push notification")
+		}
+	}
 	return notif, nil
 }
 
 // Keep package-level for Splits package compatibility.
-func CreateNotification(userId uint, title, notificationtype , message string) (Notification, error) {
+func CreateNotification(userId uint, title, notificationtype, message string) (Notification, error) {
 	var notif Notification
 	notif.UserID = userId
 	notif.Title = title

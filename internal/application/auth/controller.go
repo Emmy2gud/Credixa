@@ -9,8 +9,6 @@ import (
 	"payme/internal/application/auth/dto"
 
 	"payme/pkg/utils"
-
-	
 )
 
 type AuthHandler struct {

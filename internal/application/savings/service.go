@@ -7,7 +7,9 @@ import (
 	"payme/internal/application/wallet"
 	"payme/internal/config"
 
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 )
 
 // InitAutoSaveScheduler starts the global background cron job for auto-savings.
@@ -60,16 +62,28 @@ func processAutoSaves(frequency string) {
 }
 
 func runAutoSave(saving PersonalSaving) {
-    if err := wallet.DeductWalletBalance(saving.UserID, int64(saving.AutoSaveAmount)); err != nil {
+	//generate credix saving reference
+	w, err := wallet.GetWallet(saving.UserID)
+	if err != nil {
+		log.Println("[Cron] wallet not found for user", saving.UserID, err)
+		return
+	}
+	ref := "auto_save_" + uuid.New().String()
+	config.DB.Transaction(func(tx *gorm.DB) error {
+    if err := wallet.DeductWalletBalance(tx,w.ID,0, int64(saving.AutoSaveAmount),ref,"savings","Debit","success","auto-savings"); err != nil {
         log.Println("[Cron] deduct failed for user", saving.UserID, err)
-        return
+        return err
     }
-    if err := wallet.UpdateSavingsWalletBalance(saving.UserID, int64(saving.AutoSaveAmount)); err != nil {
+    if err := wallet.UpdateSavingsWalletBalance(tx,w.ID,0, int64(saving.AutoSaveAmount),ref,"savings","Credit","success","auto-savings"); err != nil {
         log.Println("[Cron] savings wallet update failed for user", saving.UserID, err)
-        return
+        return err
     }
 
     saving.CurrentAmount +=saving.AutoSaveAmount
     saving.LastAutoSaveDate = time.Now()
     config.DB.Save(&saving)
+
+	return nil
+})
+
   }
