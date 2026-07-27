@@ -6,12 +6,13 @@ import (
 	"fmt"
 	adapters "payme/internal/adapters/expo-push"
 	"payme/internal/application/user"
+	"payme/pkg/pagination"
 
 	"gorm.io/gorm"
 )
 
 type NotificationService interface {
-	GetNotifications(ctx context.Context, userID uint) ([]Notification, error)
+	GetNotifications(ctx context.Context, userID uint,pageparam, offset,limit int) (pagination.Pagination, error)
 	MarkNotificationRead(ctx context.Context, notificationID uint, userID uint) (int64, error)
 	CreateNotification(ctx context.Context, userID uint, title, notificationType, message, token string) (Notification, error)
 }
@@ -26,15 +27,14 @@ func NewNotificationService(db *gorm.DB) NotificationService {
 	}
 }
 
-func (s *notificationService) GetNotifications(ctx context.Context, userID uint) ([]Notification, error) {
-	var notifs []Notification
-	if err := s.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("id DESC").
-		Find(&notifs).Error; err != nil {
-		return nil, err
+func (s *notificationService) GetNotifications(ctx context.Context, userID uint,pageparam ,offset,limit int) (pagination.Pagination, error) {
+	
+	notifs,total:=GetAllNotifications(userID,limit,offset)
+	if total==0 {
+		return pagination.Pagination{}, fmt.Errorf("no notifications found")
 	}
-	return notifs, nil
+	 paginatedNotifs:= pagination.CreatePagination(pageparam, limit, total, notifs)
+	return paginatedNotifs, nil
 }
 
 func (s *notificationService) MarkNotificationRead(ctx context.Context, notificationID uint, userID uint) (int64, error) {

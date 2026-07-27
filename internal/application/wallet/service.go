@@ -273,18 +273,21 @@ func GetWallet(userID uint) (Wallet, error) {
 	return w, nil
 }
 
-func UpdateWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
+func UpdateWalletBalance(db *gorm.DB, walletID uint, fee, amount int64, ref, description, entrytype, status, category string) error {
+	if db == nil {
+		db = config.DB
+	}
 
 	var wallet Wallet
-
-	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
+	if err := db.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found: %v", err)
 	}
-	newBalance := wallet.Balance + int64(amount)
-	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
+
+	newBalance := wallet.Balance + amount
+	if err := db.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
 	}
-	//wallet ledger entry
+
 	walletLedger := WalletLedger{
 		WalletID:      wallet.ID,
 		UserID:        wallet.UserID,
@@ -294,41 +297,49 @@ func UpdateWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,descrip
 		BalanceAfter:  newBalance,
 		Description:   description,
 		Status:        status,
-		EntryType:    entrytype,
+		EntryType:     entrytype,
 	}
-	if err := config.DB.Create(&walletLedger).Error; err != nil {
+	if err := db.Create(&walletLedger).Error; err != nil {
 		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
 	}
-    //creating transaction entry
-	tx:=transaction.Transaction{
-		UserID: wallet.UserID,
-		WalletID: wallet.ID,
-		Type: entrytype,
-		Category: category,
-		Amount: amount,
-		Fee: fee,
-		Reference: ref,
-		Status: status,
+
+	tx := transaction.Transaction{
+		UserID:      wallet.UserID,
+		WalletID:    wallet.ID,
+		Type:        entrytype,
+		Category:    category,
+		Amount:      amount,
+		Fee:         fee,
+		Reference:   ref,
+		Status:      status,
 		Description: description,
 	}
-	if err := config.DB.Create(&tx).Error; err != nil {
+	if err := db.Create(&tx).Error; err != nil {
 		return fmt.Errorf("failed to create transaction entry: %v", err)
 	}
-	
+
 	return nil
 }
 
-func DeductWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
+func DeductWalletBalance(db *gorm.DB, walletID uint, fee, amount int64, ref, description, entrytype, status, category string) error {
+	if db == nil {
+		db = config.DB
+	}
+
 	var wallet Wallet
-
-	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
+	if err := db.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("wallet not found: %v", err)
 	}
-	newBalance := wallet.Balance - int64(amount)
-	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
+
+	if wallet.Balance < amount {
+		return fmt.Errorf("insufficient balance")
+	}
+
+	newBalance := wallet.Balance - amount
+	if err := db.Model(&wallet).Update("balance", newBalance).Error; err != nil {
 		return fmt.Errorf("failed to update wallet balance: %v", err)
 	}
-	//wallet ledger entry
+
 	walletLedger := WalletLedger{
 		WalletID:      wallet.ID,
 		UserID:        wallet.UserID,
@@ -338,85 +349,45 @@ func DeductWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,descrip
 		BalanceAfter:  newBalance,
 		Description:   description,
 		Status:        status,
-		EntryType:    entrytype,
+		EntryType:     entrytype,
 	}
-	if err := config.DB.Create(&walletLedger).Error; err != nil {
+	if err := db.Create(&walletLedger).Error; err != nil {
 		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
 	}
-    //creating transaction entry
-	tx:=transaction.Transaction{
-		UserID: wallet.UserID,
-		WalletID: wallet.ID,
-		Type: entrytype,
-		Category: category,
-		Amount: amount,
-		Fee: fee,
-		Reference: ref,
-		Status: status,
+
+	tx := transaction.Transaction{
+		UserID:      wallet.UserID,
+		WalletID:    wallet.ID,
+		Type:        entrytype,
+		Category:    category,
+		Amount:      amount,
+		Fee:         fee,
+		Reference:   ref,
+		Status:      status,
 		Description: description,
 	}
-	if err := config.DB.Create(&tx).Error; err != nil {
-		return fmt.Errorf("failed to create transaction entry: %v", err)
-	}
-	
-	return nil
-}
-
-func UpdateSavingsWalletBalance(db *gorm.DB,walletID uint,fee, amount int64,ref,description,entrytype,status,category string) error {
-	var wallet SavingsWallet
-
-	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
-	}
-	newBalance := wallet.Balance + int64(amount)
-	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
-		return fmt.Errorf("failed to update wallet balance: %v", err)
-	}
-	//wallet ledger entry
-	walletLedger := WalletLedger{
-		WalletID:      wallet.ID,
-		UserID:        wallet.UserID,
-		TransactionID: wallet.ID,
-		Amount:        amount,
-		BalanceBefore: wallet.Balance,
-		BalanceAfter:  newBalance,
-		Description:   description,
-		Status:        status,
-		EntryType:    entrytype,
-	}
-	if err := config.DB.Create(&walletLedger).Error; err != nil {
-		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
-	}
-    //creating transaction entry
-	tx:=transaction.Transaction{
-		UserID: wallet.UserID,
-		WalletID: wallet.ID,
-		Type: entrytype,
-		Category: category,
-		Amount: amount,
-		Fee: fee,
-		Reference: ref,
-		Status: status,
-		Description: description,
-	}
-	if err := config.DB.Create(&tx).Error; err != nil {
+	if err := db.Create(&tx).Error; err != nil {
 		return fmt.Errorf("failed to create transaction entry: %v", err)
 	}
 
 	return nil
 }
 
-func DeductSavingsWalletBalance(db *gorm.DB,walletID uint,fee,amount int64,ref,description,entrytype,status,category string) error {
-	var wallet SavingsWallet
+func UpdateSavingsWalletBalance(db *gorm.DB, walletID uint, fee, amount int64, ref, description, entrytype, status, category string) error {
+	if db == nil {
+		db = config.DB
+	}
 
-	if err := config.DB.Where("id = ?", walletID).First(&wallet).Error; err != nil {
-		return fmt.Errorf("wallet not found for user %d: %v", walletID, err)
+	var wallet SavingsWallet
+	if err := db.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("savings wallet not found: %v", err)
 	}
-	newBalance := wallet.Balance - int64(amount)
-	if err := config.DB.Model(&wallet).Update("balance", newBalance).Error; err != nil {
-		return fmt.Errorf("failed to update wallet balance: %v", err)
+
+	newBalance := wallet.Balance + amount
+	if err := db.Model(&wallet).Update("balance", newBalance).Error; err != nil {
+		return fmt.Errorf("failed to update savings wallet balance: %v", err)
 	}
-	//wallet ledger entry
+
 	walletLedger := WalletLedger{
 		WalletID:      wallet.ID,
 		UserID:        wallet.UserID,
@@ -426,24 +397,76 @@ func DeductSavingsWalletBalance(db *gorm.DB,walletID uint,fee,amount int64,ref,d
 		BalanceAfter:  newBalance,
 		Description:   description,
 		Status:        status,
-		EntryType:    entrytype,
+		EntryType:     entrytype,
 	}
-	if err := config.DB.Create(&walletLedger).Error; err != nil {
+	if err := db.Create(&walletLedger).Error; err != nil {
 		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
 	}
-    //creating transaction entry
-	tx:=transaction.Transaction{
-		UserID: wallet.UserID,
-		WalletID: wallet.ID,
-		Type: entrytype,
-		Category: category,
-		Amount: amount,
-		Fee: fee,
-		Reference: ref,
-		Status: status,
+
+	tx := transaction.Transaction{
+		UserID:      wallet.UserID,
+		WalletID:    wallet.ID,
+		Type:        entrytype,
+		Category:    category,
+		Amount:      amount,
+		Fee:         fee,
+		Reference:   ref,
+		Status:      status,
 		Description: description,
 	}
-	if err := config.DB.Create(&tx).Error; err != nil {
+	if err := db.Create(&tx).Error; err != nil {
+		return fmt.Errorf("failed to create transaction entry: %v", err)
+	}
+
+	return nil
+}
+
+func DeductSavingsWalletBalance(db *gorm.DB, walletID uint, fee, amount int64, ref, description, entrytype, status, category string) error {
+	if db == nil {
+		db = config.DB
+	}
+
+	var wallet SavingsWallet
+	if err := db.Where("id = ?", walletID).First(&wallet).Error; err != nil {
+		return fmt.Errorf("savings wallet not found: %v", err)
+	}
+
+	if wallet.Balance < amount {
+		return fmt.Errorf("insufficient savings balance")
+	}
+
+	newBalance := wallet.Balance - amount
+	if err := db.Model(&wallet).Update("balance", newBalance).Error; err != nil {
+		return fmt.Errorf("failed to update savings wallet balance: %v", err)
+	}
+
+	walletLedger := WalletLedger{
+		WalletID:      wallet.ID,
+		UserID:        wallet.UserID,
+		TransactionID: wallet.ID,
+		Amount:        amount,
+		BalanceBefore: wallet.Balance,
+		BalanceAfter:  newBalance,
+		Description:   description,
+		Status:        status,
+		EntryType:     entrytype,
+	}
+	if err := db.Create(&walletLedger).Error; err != nil {
+		return fmt.Errorf("failed to create wallet ledger entry: %v", err)
+	}
+
+	tx := transaction.Transaction{
+		UserID:      wallet.UserID,
+		WalletID:    wallet.ID,
+		Type:        entrytype,
+		Category:    category,
+		Amount:      amount,
+		Fee:         fee,
+		Reference:   ref,
+		Status:      status,
+		Description: description,
+	}
+	if err := db.Create(&tx).Error; err != nil {
 		return fmt.Errorf("failed to create transaction entry: %v", err)
 	}
 

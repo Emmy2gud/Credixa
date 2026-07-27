@@ -1,6 +1,7 @@
 package pagination
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -23,6 +24,7 @@ func GetPrevPageURL(r *http.Request, page, limit int) string {
 	}
 
 	q := r.URL.Query()
+	fmt.Println(q)
 	q.Set("page", strconv.Itoa(page-1))
 	q.Set("limit", strconv.Itoa(limit))
 

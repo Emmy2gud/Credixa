@@ -1,11 +1,13 @@
 package transfer
 
 import (
-
 	"net/http"
 	"payme/internal/api/middleware"
 	"payme/internal/application/transfer/dto"
 	"payme/pkg/utils"
+	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type TransferController struct {
@@ -72,4 +74,28 @@ func (h *TransferController) VerifyFunding(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// VerifyFunding logic here
+}
+
+func (h *TransferController) GetUserTransfers (w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	page := vars["page"]
+	limit := vars["limit"]
+	//coverting limit from string to int
+	pageparam, _ := strconv.Atoi(page)
+
+	limitparam, _ := strconv.Atoi(limit)
+	offset := (pageparam - 1) * limitparam
+
+	notifs, err := h.service.GetUserTransfers(r.Context(), userID,pageparam, offset, limitparam)
+	if err != nil {
+		http.Error(w, "Could not fetch notifications", http.StatusInternalServerError)
+		return
+	}
+    utils.JSON(w, http.StatusOK, notifs)
 }

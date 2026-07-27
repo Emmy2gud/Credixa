@@ -1,6 +1,10 @@
 package transfer
 
-import "gorm.io/gorm"
+import (
+	"payme/internal/config"
+
+	"gorm.io/gorm"
+)
 
 
 type Transfer struct {
@@ -21,3 +25,13 @@ type Transfer struct {
 	
 }
 
+func GetAllUserTransfers(userID uint,limit int, offset int)([]Transfer , int64) {
+	var transfers []Transfer
+	var totalRows int64
+
+
+	config.DB.Model(&Transfer{}).Where("sender_id = ?", userID).Count(&totalRows)
+
+	config.DB.Limit(limit).Offset(offset).Where("user_id = ?", userID).Find(&transfers)
+	return transfers,totalRows
+}

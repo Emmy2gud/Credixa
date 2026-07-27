@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"payme/internal/api/middleware"
+	"payme/pkg/utils"
+	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type NotificationController struct {
@@ -25,14 +29,21 @@ func (h *NotificationController) GetNotifications(w http.ResponseWriter, r *http
 		return
 	}
 
-	notifs, err := h.service.GetNotifications(r.Context(), userID)
+	vars := mux.Vars(r)
+	page := vars["page"]
+	limit := vars["limit"]
+	//coverting limit from string to int
+	pageparam, _ := strconv.Atoi(page)
+
+	limitparam, _ := strconv.Atoi(limit)
+	offset := (pageparam - 1) * limitparam
+
+	notifs, err := h.service.GetNotifications(r.Context(), userID,pageparam, offset, limitparam)
 	if err != nil {
 		http.Error(w, "Could not fetch notifications", http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(notifs)
+    utils.JSON(w, http.StatusOK, notifs)
 }
 
 // MarkNotificationRead marks a single notification as read for the authenticated user.
@@ -61,8 +72,7 @@ func (h *NotificationController) MarkNotificationRead(w http.ResponseWriter, r *
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	utils.JSON(w, http.StatusOK, map[string]string{
 		"message": "Notification marked as read",
 	})
 }

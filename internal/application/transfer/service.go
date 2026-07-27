@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"payme/internal/adapters/flutterwave"
-
+	"payme/pkg/pagination"
 
 	"payme/internal/application/accounts"
 	"payme/internal/application/transaction"
@@ -29,6 +29,7 @@ type InternalTransferPayload struct {
 type TransferService interface {
 	ResolveBankDetails(ctx context.Context, input dto.ResolveBankDetailsRequest) (dto.ResolveBankDetailsResponse, error)
 	InitializeFunding(ctx context.Context, req dto.CreateTransferRequest) (dto.TransferResponse, error)
+	GetUserTransfers(ctx context.Context, userID uint, pageparam , offset,limit int) (pagination.Pagination, error)
 	VerifyFunding(ctx context.Context) error
 }
 
@@ -98,4 +99,14 @@ func (s *transferService) InitializeFunding(ctx context.Context, req dto.CreateT
 func (s *transferService) VerifyFunding(ctx context.Context) error {
 	// VerifyFunding logic here
 	return nil
+}
+
+func (s *transferService) GetUserTransfers(ctx context.Context, userID uint,pageparam, offset,limit int) (pagination.Pagination, error) {
+	transfers, total := GetAllUserTransfers(userID,limit,offset)
+
+	if total==0 {
+		return pagination.Pagination{}, fmt.Errorf("no transfers found")
+	}
+	 paginatedTransfers:= pagination.CreatePagination(pageparam, limit, total, transfers)
+	return paginatedTransfers, nil
 }
